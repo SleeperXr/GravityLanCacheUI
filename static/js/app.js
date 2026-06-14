@@ -1104,18 +1104,19 @@ function drawNetTrafficChart() {
   ctx.fillText(`Max: ${formatBytes(maxVal)}/s`, w - 12, 54);
 }
 
-// ── Page: Logs ───────────────────────────────────────────────────────
-
 let logsInterval = null;
 
 async function renderLogs(container) {
   if (logsInterval) clearInterval(logsInterval);
+
+  let isLogsPaused = false;
 
   container.innerHTML = `
     <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 160px)">
       <div class="card-header" style="justify-content:space-between">
         <div class="card-title">📜 Backend System Logs</div>
         <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="btn-pause-logs">⏸️ Pause</button>
           <button class="btn btn-ghost" id="btn-refresh-logs">🔄 Refresh</button>
           <button class="btn btn-ghost" id="btn-clear-logs" style="color:var(--color-miss)">🗑️ Clear UI</button>
         </div>
@@ -1127,6 +1128,8 @@ async function renderLogs(container) {
   `;
 
   async function fetchLogs() {
+    if (isLogsPaused) return;
+
     try {
       const logs = await API.get('/logs');
       const consoleBox = document.getElementById('logs-console');
@@ -1136,6 +1139,9 @@ async function renderLogs(container) {
         consoleBox.innerHTML = '<div style="color:var(--text-muted)">No logs recorded yet.</div>';
         return;
       }
+
+      // Check if user is scrolled near bottom (within 50px)
+      const isNearBottom = consoleBox.scrollHeight - consoleBox.scrollTop - consoleBox.clientHeight < 50;
 
       consoleBox.innerHTML = logs.map(line => {
         let color = '#e2e8f0';
@@ -1147,7 +1153,9 @@ async function renderLogs(container) {
         return `<div style="color:${color};margin-bottom:2px">${escapeHtml(line)}</div>`;
       }).join('');
 
-      consoleBox.scrollTop = consoleBox.scrollHeight;
+      if (isNearBottom) {
+        consoleBox.scrollTop = consoleBox.scrollHeight;
+      }
     } catch (e) {
       const consoleBox = document.getElementById('logs-console');
       if (consoleBox) consoleBox.innerHTML = `<div style="color:var(--color-miss)">Failed to load logs: ${e.message}</div>`;
@@ -1166,7 +1174,27 @@ async function renderLogs(container) {
   fetchLogs();
   logsInterval = setInterval(fetchLogs, 3000);
 
-  document.getElementById('btn-refresh-logs').addEventListener('click', fetchLogs);
+  document.getElementById('btn-refresh-logs').addEventListener('click', () => {
+    const wasPaused = isLogsPaused;
+    isLogsPaused = false;
+    fetchLogs().then(() => {
+      isLogsPaused = wasPaused;
+    });
+  });
+
+  document.getElementById('btn-pause-logs').addEventListener('click', (e) => {
+    isLogsPaused = !isLogsPaused;
+    const btn = e.target;
+    if (isLogsPaused) {
+      btn.textContent = '▶️ Resume';
+      btn.style.color = 'var(--color-miss)';
+    } else {
+      btn.textContent = '⏸️ Pause';
+      btn.style.color = '';
+      fetchLogs(); // Fetch immediately on resume
+    }
+  });
+
   document.getElementById('btn-clear-logs').addEventListener('click', () => {
     const consoleBox = document.getElementById('logs-console');
     if (consoleBox) consoleBox.innerHTML = '<div style="color:var(--text-muted)">UI Cleared. Waiting for new logs...</div>';
