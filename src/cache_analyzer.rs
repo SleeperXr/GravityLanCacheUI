@@ -92,6 +92,7 @@ async fn scan_cache_directory(
             total_size_bytes: total_size,
             total_files,
             details_json: None,
+            taken_at: None,
         }
     })
     .await?;

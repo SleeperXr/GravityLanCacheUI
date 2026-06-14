@@ -72,7 +72,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer().with_writer(|| LogWriter))
         .init();
 
-    tracing::info!("🚀 GravityLancacheUI starting...");
+    tracing::info!("🚀 GravityLancacheUI v{} starting...", env!("CARGO_PKG_VERSION"));
 
     let config = AppConfig::load();
     tracing::info!("Configuration loaded: {:?}", config);
@@ -91,6 +91,12 @@ async fn main() {
         db,
         config: tokio::sync::RwLock::new(config.clone()),
         tx_broadcast: tx_broadcast.clone(),
+    });
+
+    // Automatically download Steam depot mappings if none exist
+    let mapping_state = state.clone();
+    tokio::spawn(async move {
+        game_resolver::check_and_download_depot_mappings(mapping_state).await;
     });
 
     // Spawn background tasks

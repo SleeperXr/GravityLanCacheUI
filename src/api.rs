@@ -21,6 +21,9 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/logs", get(get_logs))
         .route("/prefill/status", get(prefill_status))
         .route("/prefill/run/{platform}", axum::routing::post(prefill_run))
+        .route("/cache/latest", get(latest_cache_snapshot))
+        .route("/tools/update_mappings", axum::routing::post(update_mappings))
+        .route("/tools/reset_offset", axum::routing::post(reset_log_offset))
         .route("/ws", get(ws_handler))
 }
 
@@ -36,17 +39,38 @@ async fn health() -> Json<serde_json::Value> {
 // ── Dashboard ────────────────────────────────────────────────────────
 
 async fn dashboard(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match state.db.get_dashboard_stats().await {
-        Ok(stats) => Json(serde_json::json!({
-            "stats": stats,
-        }))
-        .into_response(),
-        Err(e) => (
+    let stats = match state.db.get_dashboard_stats().await {
+        Ok(stats) => stats,
+        Err(e) => return (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": e.to_string()})),
-        )
-            .into_response(),
-    }
+        ).into_response(),
+    };
+
+    let log_path = {
+        let config = state.config.read().await;
+        std::path::PathBuf::from(&config.lancache_logs_dir).join("access.log")
+    };
+
+    let parse_state = state.db.get_parse_state().await.unwrap_or_default();
+    let current_offset = parse_state.last_offset;
+    let total_size = log_path.metadata().map(|m| m.len() as i64).unwrap_or(current_offset);
+    let is_catching_up = total_size - current_offset > 100 * 1024;
+    let percentage = if total_size > 0 {
+        (current_offset as f64 / total_size as f64) * 100.0
+    } else {
+        100.0
+    };
+
+    Json(serde_json::json!({
+        "stats": stats,
+        "parser_status": {
+            "current_offset": current_offset,
+            "total_size": total_size,
+            "percentage": percentage,
+            "is_catching_up": is_catching_up,
+        }
+    })).into_response()
 }
 
 // ── Downloads ────────────────────────────────────────────────────────
@@ -237,5 +261,66 @@ async fn get_logs() -> impl IntoResponse {
         Json(list)
     } else {
         Json(vec![])
+    }
+}
+
+// ── Maintenance & Cache Tools ────────────────────────────────────────
+
+async fn latest_cache_snapshot(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let snapshot = match state.db.get_latest_cache_snapshot().await {
+        Ok(s) => s,
+        Err(e) => return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ).into_response(),
+    };
+
+    let games = match state.db.get_cached_games_summary().await {
+        Ok(g) => g,
+        Err(e) => return (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ).into_response(),
+    };
+
+    Json(serde_json::json!({
+        "snapshot": snapshot,
+        "games": games
+    })).into_response()
+}
+
+async fn update_mappings(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let state_clone = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = crate::game_resolver::force_download_depot_mappings(state_clone).await {
+            tracing::error!("Manual mapping update failed: {}", e);
+        }
+    });
+
+    Json(serde_json::json!({
+        "status": "ok",
+        "message": "Steam depot mappings update started in background"
+    })).into_response()
+}
+
+async fn reset_log_offset(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let parse_state = crate::db::ParseState {
+        last_offset: 0,
+        last_inode: 0,
+    };
+    match state.db.save_parse_state(&parse_state).await {
+        Ok(()) => {
+            tracing::info!("Log parser offset reset to 0 by user request");
+            Json(serde_json::json!({
+                "status": "ok",
+                "message": "Log parser offset reset. Rewinding to beginning of log..."
+            }))
+            .into_response()
+        }
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
     }
 }

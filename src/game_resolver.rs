@@ -70,6 +70,7 @@ async fn resolve_steam_depot(state: &Arc<AppState>, depot_id: &str) -> Option<St
 }
 
 /// Load a community-maintained depot-to-game mapping JSON file.
+#[allow(dead_code)]
 pub async fn load_mapping_file(
     state: &Arc<AppState>,
     path: &str,
@@ -88,4 +89,75 @@ pub async fn load_mapping_file(
 
     tracing::info!("Loaded {} game mappings from {}", count, path);
     Ok(count)
+}
+
+/// Automatically check if mapping database has mappings. If not, download and import them.
+pub async fn check_and_download_depot_mappings(state: Arc<AppState>) {
+    match state.db.get_game_mappings_count().await {
+        Ok(count) => {
+            if count > 0 {
+                tracing::info!("Database already contains {} game mappings, skipping auto-download", count);
+                return;
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to check game mappings count: {}", e);
+            return;
+        }
+    }
+
+    if let Err(e) = download_and_import_mappings(state).await {
+        tracing::error!("Failed to download and import game mappings: {}", e);
+    }
+}
+
+/// Force download and update of mappings.
+pub async fn force_download_depot_mappings(state: Arc<AppState>) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+    tracing::info!("Force updating Steam depot mappings...");
+    download_and_import_mappings(state).await
+}
+
+/// Download mapping CSV from GitHub and import into SQLite.
+async fn download_and_import_mappings(state: Arc<AppState>) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+    tracing::info!("Downloading Steam depot mappings (approx. 7.8 MB) from GitHub...");
+    let url = "https://github.com/devedse/DeveLanCacheUI_SteamDepotFinder_Runner/releases/latest/download/app-depot-output-cleaned.csv";
+    
+    // Create reqwest client
+    let client = reqwest::Client::builder()
+        .user_agent("GravityLancacheUI/0.1.0")
+        .build()?;
+        
+    let resp = client.get(url).send().await?;
+    if !resp.status().is_success() {
+        return Err(format!("GitHub returned HTTP {}", resp.status()).into());
+    }
+
+    let text = resp.text().await?;
+    tracing::info!("Depot mappings file downloaded. Parsing and importing into database...");
+
+    let state_clone = state.clone();
+    let mappings = tokio::task::spawn_blocking(move || {
+        let mut list = Vec::new();
+        for line in text.lines() {
+            let parts: Vec<&str> = line.split(';').collect();
+            if parts.len() >= 3 {
+                let app_id = parts[0].trim().to_string();
+                let game_name = parts[1].trim().to_string();
+                let depot_id = parts[2].trim().to_string();
+                if !depot_id.is_empty() && !game_name.is_empty() {
+                    list.push((depot_id, game_name, app_id));
+                }
+            }
+        }
+        list
+    })
+    .await?;
+
+    let num_mappings = mappings.len();
+    tracing::info!("Parsed {} mappings. Starting batch insert...", num_mappings);
+
+    let inserted = state_clone.db.batch_insert_game_mappings("steam".to_string(), mappings).await?;
+    tracing::info!("Successfully imported {}/{} Steam depot mappings into database", inserted, num_mappings);
+
+    Ok(inserted)
 }

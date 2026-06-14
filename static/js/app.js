@@ -47,6 +47,38 @@ function hitRateBar(hitBytes, missBytes) {
   </div>`;
 }
 
+function getGameArtHtml(service, gameName, appId, downloadId) {
+  let innerHtml = '';
+  let borderAccent = 'rgba(255,255,255,0.05)';
+  const displayLabel = service ? service.toUpperCase() : 'GAME';
+  
+  if (service === 'steam' && appId) {
+    innerHtml = `<img src="https://cdn.akamai.steamstatic.com/steam/apps/${appId}/capsule_184x69.jpg" 
+                      alt="${gameName || 'Steam'}" 
+                      style="width:100%;height:100%;object-fit:cover;border-radius:4px"
+                      onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                 <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;color:#818cf8;background:rgba(99,102,241,0.1)">STEAM</div>`;
+    borderAccent = 'rgba(99, 102, 241, 0.3)';
+  } else {
+    // Sleek placeholders for other services
+    let bg = 'rgba(255,255,255,0.03)';
+    let color = 'var(--text-muted)';
+    
+    if (service === 'steam') { bg = 'rgba(27, 40, 56, 0.8)'; color = '#66c0f4'; borderAccent = 'rgba(102, 192, 244, 0.3)'; }
+    else if (service === 'epic' || service === 'epicgames') { bg = 'rgba(32, 32, 32, 0.8)'; color = '#f5f5f5'; borderAccent = 'rgba(255,255,255,0.2)'; }
+    else if (service === 'battlenet') { bg = 'rgba(0, 174, 240, 0.1)'; color = '#00aef0'; borderAccent = 'rgba(0, 174, 240, 0.3)'; }
+    else if (service === 'xbox' || service === 'windowsupdate') { bg = 'rgba(16, 124, 16, 0.1)'; color = '#107c10'; borderAccent = 'rgba(16, 124, 16, 0.3)'; }
+    else if (service === 'nintendo') { bg = 'rgba(224, 0, 0, 0.1)'; color = '#e00000'; borderAccent = 'rgba(224, 0, 0, 0.3)'; }
+    else if (service === 'playstation') { bg = 'rgba(0, 48, 143, 0.1)'; color = '#00308f'; borderAccent = 'rgba(0, 48, 143, 0.3)'; }
+    
+    innerHtml = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:800;color:${color};background:${bg}">${displayLabel}</div>`;
+  }
+  
+  return `<div class="game-art-container" style="width:80px;height:30px;background:#05070c;border:1px solid ${borderAccent};border-radius:4px;overflow:hidden;position:relative;flex-shrink:0;box-shadow:0 2px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center">
+    ${innerHtml}
+  </div>`;
+}
+
 // ── API Client ───────────────────────────────────────────────────────
 
 const API = {
@@ -242,8 +274,49 @@ async function loadDashboardData() {
     document.getElementById('stat-clients-sub').textContent = s.unique_clients + ' clients';
 
     renderDownloadsTable('recent-downloads-table', dlRes.downloads);
+    populateLiveFeed(dlRes.downloads.slice(0, 10));
+
+    if (dashRes.parser_status) {
+      updateParserProgress(dashRes.parser_status);
+    }
   } catch (e) {
     console.error('Dashboard load failed:', e);
+  }
+}
+
+function updateParserProgress(status) {
+  const container = document.getElementById('parser-progress-container');
+  const label = document.getElementById('parser-progress-label');
+  const wrapper = document.getElementById('parser-progress-bar-wrapper');
+  const bar = document.getElementById('parser-progress-bar');
+  const text = document.getElementById('parser-progress-text');
+
+  if (!container || !bar || !text) return;
+
+  container.style.display = 'flex';
+
+  if (status.is_catching_up) {
+    container.style.background = 'rgba(99, 102, 241, 0.1)';
+    container.style.borderColor = 'rgba(99, 102, 241, 0.25)';
+    if (label) {
+      label.textContent = '⚡ SCANNING HISTORICAL LOGS...';
+      label.style.color = 'var(--accent-primary-light)';
+    }
+    if (wrapper) wrapper.style.display = 'block';
+    bar.style.width = status.percentage.toFixed(1) + '%';
+    
+    const scannedStr = formatBytes(status.current_offset);
+    const totalStr = formatBytes(status.total_size);
+    text.textContent = `${status.percentage.toFixed(1)}% (${scannedStr} / ${totalStr})`;
+  } else {
+    container.style.background = 'rgba(34, 197, 94, 0.05)';
+    container.style.borderColor = 'rgba(34, 197, 94, 0.2)';
+    if (label) {
+      label.textContent = '🟢 SCANNING LIVE';
+      label.style.color = 'var(--color-hit)';
+    }
+    if (wrapper) wrapper.style.display = 'none';
+    text.textContent = `Offset: ${formatBytes(status.current_offset)}`;
   }
 }
 
@@ -305,7 +378,15 @@ function renderDownloadsTable(containerId, downloads) {
           <tr>
             <td title="${d.ended_at}">${timeAgo(d.ended_at)}</td>
             <td>${serviceBadge(d.service)}</td>
-            <td>${d.game_name || d.download_id || '—'}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:12px">
+                ${getGameArtHtml(d.service, d.game_name, d.app_id, d.download_id)}
+                <div style="display:flex;flex-direction:column;gap:1px;align-items:flex-start">
+                  <span style="font-weight:700;color:var(--text-primary);font-size:0.95rem;text-align:left">${d.game_name || d.download_id || '—'}</span>
+                  ${d.game_name ? `<span style="font-size:0.75rem;color:var(--text-muted);font-family:var(--font-mono)">ID: ${d.download_id || '—'}</span>` : ''}
+                </div>
+              </div>
+            </td>
             <td style="font-family:var(--font-mono);font-size:0.8rem">${d.client_ip}</td>
             <td>${formatBytes(d.total_bytes)}</td>
             <td>${hitRateBadge(d.hit_rate)}</td>
@@ -332,6 +413,14 @@ async function renderCache(container) {
         <div class="stat-sub">Automatic scanning active</div>
       </div>
     </div>
+
+    <div class="card" style="margin-bottom:var(--space-md)">
+      <div class="card-header"><div class="card-title">💾 Cached Platforms & Games</div></div>
+      <div class="table-container" id="cache-games-table">
+        <div class="empty-state"><div class="icon">⏳</div>Loading cached games...</div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-header"><div class="card-title">Cache Info</div></div>
       <p style="color:var(--text-secondary)">
@@ -340,6 +429,86 @@ async function renderCache(container) {
       </p>
     </div>
   `;
+
+  loadCacheData();
+}
+
+async function loadCacheData() {
+  try {
+    const res = await API.get('/cache/latest');
+    
+    // Update stats cards
+    if (res.snapshot) {
+      document.getElementById('cache-size').textContent = formatBytes(res.snapshot.total_size_bytes);
+      document.getElementById('cache-files').textContent = res.snapshot.total_files.toLocaleString() + ' files';
+      if (res.snapshot.taken_at) {
+        document.getElementById('cache-last-scan').textContent = timeAgo(res.snapshot.taken_at);
+      } else {
+        document.getElementById('cache-last-scan').textContent = 'Completed';
+      }
+    } else {
+      document.getElementById('cache-size').textContent = 'No scans yet';
+      document.getElementById('cache-files').textContent = '0 files';
+      document.getElementById('cache-last-scan').textContent = 'Never';
+    }
+
+    // Render cached games table
+    const tableContainer = document.getElementById('cache-games-table');
+    if (tableContainer) {
+      if (!res.games || res.games.length === 0) {
+        tableContainer.innerHTML = '<div class="empty-state"><div class="icon">💾</div>No cached games recorded yet</div>';
+      } else {
+        tableContainer.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Game / Platform</th>
+                <th>Service</th>
+                <th>Total Cached</th>
+                <th>Hit Rate</th>
+                <th>Last Accessed</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${res.games.map(g => {
+                const total = g.total_bytes;
+                const hitRate = total > 0 ? (g.hit_bytes / total) * 100 : 0;
+                return `
+                  <tr>
+                    <td>
+                      <div style="display:flex;align-items:center;gap:12px">
+                        ${getGameArtHtml(g.service, g.name, g.app_id, null)}
+                        <div style="display:flex;flex-direction:column;gap:1px;align-items:flex-start">
+                          <span style="font-weight:700;color:var(--text-primary);font-size:0.95rem;text-align:left">${g.name}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>${serviceBadge(g.service)}</td>
+                    <td>
+                      <div style="display:flex;flex-direction:column;align-items:flex-start">
+                        <span style="font-weight:700;color:var(--text-primary)">${formatBytes(total)}</span>
+                        <span style="font-size:0.75rem;color:var(--text-muted)">${formatBytes(g.hit_bytes)} hit / ${formatBytes(g.miss_bytes)} miss</span>
+                      </div>
+                    </td>
+                    <td>${hitRateBadge(hitRate)}</td>
+                    <td>${timeAgo(g.last_downloaded)}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load cache data:', e);
+    const sizeEl = document.getElementById('cache-size');
+    if (sizeEl) sizeEl.textContent = 'Error';
+    const tableContainer = document.getElementById('cache-games-table');
+    if (tableContainer) {
+      tableContainer.innerHTML = '<div class="empty-state"><div class="icon">❌</div>Failed to load cache contents</div>';
+    }
+  }
 }
 
 // ── Page: Clients ────────────────────────────────────────────────────
@@ -524,6 +693,24 @@ async function renderSettings(container) {
       </div>
     </div>
 
+    <div class="card" style="margin-bottom:var(--space-md)">
+      <div class="card-header"><div class="card-title">Maintenance & Tools</div></div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
+        <div style="flex:1;min-width:280px">
+          <button class="btn btn-primary" id="btn-update-mappings" style="background:#0284c7;width:100%;justify-content:center">🔄 Update Steam Depot Mappings</button>
+          <p style="color:var(--text-muted);font-size:0.75rem;margin-top:8px">
+            Downloads and updates the local Steam Depot mapping database (~7.8 MB CSV file) from GitHub to resolve depot IDs into game names.
+          </p>
+        </div>
+        <div style="flex:1;min-width:280px">
+          <button class="btn btn-ghost" id="btn-reset-offset" style="color:var(--color-miss);border-color:var(--color-miss);width:100%;justify-content:center">⚠️ Reset Log Parser Offset</button>
+          <p style="color:var(--text-muted);font-size:0.75rem;margin-top:8px">
+            Resets the log parser to the beginning of access.log. Use this to parse historical downloads that were not logged or if you cleared your database.
+          </p>
+        </div>
+      </div>
+    </div>
+
     <div style="display:flex;gap:12px">
       <button class="btn btn-primary" id="settings-save">💾 Save Settings</button>
       <button class="btn btn-ghost" id="settings-check">🔧 Run Setup Check</button>
@@ -532,6 +719,43 @@ async function renderSettings(container) {
 
   document.getElementById('settings-save').addEventListener('click', saveSettings);
   document.getElementById('settings-check').addEventListener('click', runSetupCheck);
+
+  document.getElementById('btn-update-mappings').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-update-mappings');
+    btn.textContent = '⏳ Starting...';
+    btn.disabled = true;
+    try {
+      const res = await API.post('/tools/update_mappings');
+      btn.textContent = '✅ Started!';
+      alert(res.message || 'Mapping update started in background.');
+    } catch (e) {
+      btn.textContent = '❌ Error';
+      console.error(e);
+    }
+    setTimeout(() => {
+      btn.textContent = '🔄 Update Steam Depot Mappings';
+      btn.disabled = false;
+    }, 3000);
+  });
+
+  document.getElementById('btn-reset-offset').addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to reset the log parser offset? This will parse your access.log from the beginning.')) return;
+    const btn = document.getElementById('btn-reset-offset');
+    btn.textContent = '⏳ Resetting...';
+    btn.disabled = true;
+    try {
+      const res = await API.post('/tools/reset_offset');
+      btn.textContent = '✅ Reset!';
+      alert(res.message || 'Offset reset successfully. The log parser is rewinding.');
+    } catch (e) {
+      btn.textContent = '❌ Error';
+      console.error(e);
+    }
+    setTimeout(() => {
+      btn.textContent = '⚠️ Reset Log Parser Offset';
+      btn.disabled = false;
+    }, 3000);
+  });
 }
 
 async function saveSettings() {
@@ -596,6 +820,29 @@ async function loadSetupChecks() {
 
 // ── Live Feed ────────────────────────────────────────────────────────
 
+function populateLiveFeed(downloads) {
+  const feed = document.getElementById('live-feed');
+  if (!feed) return;
+
+  if (!downloads || downloads.length === 0) {
+    feed.innerHTML = '<div class="empty-state"><div class="icon">📡</div>Waiting for activity...</div>';
+    return;
+  }
+
+  feed.innerHTML = downloads.map(d => {
+    return `<div style="padding:10px 0;border-bottom:1px solid var(--border-subtle);font-size:0.85rem;display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;align-items:center;gap:8px">
+        ${serviceBadge(d.service)}
+        <span style="color:var(--text-secondary);font-family:var(--font-mono)">${d.client_ip}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end">
+        <span style="font-weight:700;color:var(--text-primary)">${formatBytes(d.total_bytes)}</span>
+        <span style="font-size:0.75rem;color:var(--text-muted)">${timeAgo(d.ended_at)}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function setupLiveFeed() {
   ws.on((data) => {
     // Update dashboard stats on any event
@@ -613,11 +860,16 @@ function setupLiveFeed() {
 
       const item = document.createElement('div');
       item.className = 'fade-in';
-      item.style.cssText = 'padding:8px 0;border-bottom:1px solid var(--border-subtle);font-size:0.85rem';
+      item.style.cssText = 'padding:10px 0;border-bottom:1px solid var(--border-subtle);font-size:0.85rem;display:flex;justify-content:space-between;align-items:center';
       item.innerHTML = `
-        ${serviceBadge(data.service)}
-        <span style="color:var(--text-secondary);margin-left:8px">${data.client_ip}</span>
-        <span style="float:right;color:var(--text-muted)">${formatBytes(data.bytes)}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${serviceBadge(data.service)}
+          <span style="color:var(--text-secondary);font-family:var(--font-mono)">${data.client_ip}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end">
+          <span style="font-weight:700;color:var(--text-primary)">${formatBytes(data.bytes)}</span>
+          <span style="font-size:0.75rem;color:var(--text-muted)">Just now</span>
+        </div>
       `;
 
       feed.insertBefore(item, feed.firstChild);
@@ -628,6 +880,21 @@ function setupLiveFeed() {
 
     if (data.type === 'network_traffic') {
       updateNetTrafficChart(data.interfaces);
+    }
+
+    if (data.type === 'cache_update') {
+      if (currentPage === 'cache') {
+        const sizeEl = document.getElementById('cache-size');
+        const filesEl = document.getElementById('cache-files');
+        const scanEl = document.getElementById('cache-last-scan');
+        if (sizeEl) sizeEl.textContent = formatBytes(data.total_size_bytes);
+        if (filesEl) filesEl.textContent = data.total_files.toLocaleString() + ' files';
+        if (scanEl) scanEl.textContent = 'Just now';
+      }
+    }
+
+    if (data.type === 'parser_status') {
+      updateParserProgress(data);
     }
   });
 }

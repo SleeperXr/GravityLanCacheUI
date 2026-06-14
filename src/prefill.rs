@@ -16,6 +16,7 @@ pub struct PrefillStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PrefillConfig {
     pub steam_enabled: bool,
     pub battlenet_enabled: bool,

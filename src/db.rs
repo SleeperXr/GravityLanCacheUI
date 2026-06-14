@@ -113,12 +113,13 @@ impl Database {
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, client_ip, service, download_id, game_name,
-                            started_at, ended_at, total_bytes, hit_bytes, miss_bytes,
-                            request_count, hit_rate
-                     FROM download_events
-                     WHERE client_ip=?1 AND service=?2 AND download_id IS ?3 AND ended_at > ?4
-                     ORDER BY ended_at DESC LIMIT 1",
+                    "SELECT d.id, d.client_ip, d.service, d.download_id, COALESCE(d.game_name, m.game_name),
+                            d.started_at, d.ended_at, d.total_bytes, d.hit_bytes, d.miss_bytes,
+                            d.request_count, d.hit_rate, m.app_id
+                     FROM download_events d
+                     LEFT JOIN game_mappings m ON d.service = m.service AND d.download_id = m.download_id
+                     WHERE d.client_ip=?1 AND d.service=?2 AND d.download_id IS ?3 AND d.ended_at > ?4
+                     ORDER BY d.ended_at DESC LIMIT 1",
                 )?;
                 let event = stmt
                     .query_row(params![client_ip, service, download_id, cutoff], |row| {
@@ -135,6 +136,7 @@ impl Database {
                             miss_bytes: row.get(9)?,
                             request_count: row.get(10)?,
                             hit_rate: row.get(11)?,
+                            app_id: row.get(12)?,
                         })
                     })
                     .ok();
@@ -153,10 +155,12 @@ impl Database {
             .conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, client_ip, service, download_id, game_name,
-                            started_at, ended_at, total_bytes, hit_bytes, miss_bytes,
-                            request_count, hit_rate
-                     FROM download_events ORDER BY ended_at DESC LIMIT ?1 OFFSET ?2",
+                    "SELECT d.id, d.client_ip, d.service, d.download_id, COALESCE(d.game_name, m.game_name),
+                            d.started_at, d.ended_at, d.total_bytes, d.hit_bytes, d.miss_bytes,
+                            d.request_count, d.hit_rate, m.app_id
+                     FROM download_events d
+                     LEFT JOIN game_mappings m ON d.service = m.service AND d.download_id = m.download_id
+                     ORDER BY d.ended_at DESC LIMIT ?1 OFFSET ?2",
                 )?;
                 let rows = stmt
                     .query_map(params![limit, offset], |row| {
@@ -173,6 +177,7 @@ impl Database {
                             miss_bytes: row.get(9)?,
                             request_count: row.get(10)?,
                             hit_rate: row.get(11)?,
+                            app_id: row.get(12)?,
                         })
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
@@ -321,6 +326,130 @@ impl Database {
         Ok(())
     }
 
+    pub async fn get_latest_cache_snapshot(
+        &self,
+    ) -> Result<Option<CacheSnapshot>, Box<dyn std::error::Error + Send + Sync>> {
+        let snapshot = self
+            .conn
+            .call(|conn| {
+                let result = conn
+                    .query_row(
+                        "SELECT total_size_bytes, total_files, details_json, taken_at FROM cache_snapshots ORDER BY id DESC LIMIT 1",
+                        [],
+                        |row| {
+                            Ok(CacheSnapshot {
+                                total_size_bytes: row.get(0)?,
+                                total_files: row.get(1)?,
+                                details_json: row.get(2)?,
+                                taken_at: Some(row.get(3)?),
+                            })
+                        },
+                    )
+                    .ok();
+                Ok(result)
+            })
+            .await?;
+        Ok(snapshot)
+    }
+
+    pub async fn get_cached_games_summary(
+        &self,
+    ) -> Result<Vec<CachedGameSummary>, Box<dyn std::error::Error + Send + Sync>> {
+        let list = self
+            .conn
+            .call(|conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT COALESCE(d.game_name, m.game_name, d.download_id, d.service) AS name,
+                            d.service,
+                            m.app_id,
+                            SUM(d.total_bytes) AS total_bytes,
+                            SUM(d.hit_bytes) AS hit_bytes,
+                            SUM(d.miss_bytes) AS miss_bytes,
+                            MAX(d.ended_at) AS last_downloaded
+                     FROM download_events d
+                     LEFT JOIN game_mappings m ON d.service = m.service AND d.download_id = m.download_id
+                     GROUP BY name, d.service, m.app_id
+                     ORDER BY total_bytes DESC",
+                )?;
+                let rows = stmt
+                    .query_map([], |row| {
+                        Ok(CachedGameSummary {
+                            name: row.get(0)?,
+                            service: row.get(1)?,
+                            app_id: row.get(2)?,
+                            total_bytes: row.get(3)?,
+                            hit_bytes: row.get(4)?,
+                            miss_bytes: row.get(5)?,
+                            last_downloaded: row.get(6)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .await?;
+        Ok(list)
+    }
+
+    // ── Counts & Batch Imports ────────────────────────────────────────
+
+    pub async fn get_download_events_count(
+        &self,
+    ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+        let count = self
+            .conn
+            .call(|conn| {
+                let val: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM download_events", [], |r| r.get(0))
+                    .unwrap_or(0);
+                Ok(val)
+            })
+            .await?;
+        Ok(count)
+    }
+
+    pub async fn get_game_mappings_count(
+        &self,
+    ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+        let count = self
+            .conn
+            .call(|conn| {
+                let val: i64 = conn
+                    .query_row("SELECT COUNT(*) FROM game_mappings", [], |r| r.get(0))
+                    .unwrap_or(0);
+                Ok(val)
+            })
+            .await?;
+        Ok(count)
+    }
+
+    pub async fn batch_insert_game_mappings(
+        &self,
+        service: String,
+        mappings: Vec<(String, String, String)>,
+    ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+        let count = self
+            .conn
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                let mut stmt = tx.prepare(
+                    "INSERT INTO game_mappings (service, download_id, game_name, app_id, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, datetime('now'))
+                     ON CONFLICT(service, download_id) DO UPDATE SET
+                       game_name=excluded.game_name, app_id=excluded.app_id, updated_at=excluded.updated_at",
+                )?;
+                let mut inserted = 0;
+                for (depot_id, game_name, app_id) in mappings {
+                    stmt.execute(params![service, depot_id, game_name, Some(app_id)])?;
+                    inserted += 1;
+                }
+                stmt.finalize()?;
+                tx.commit()?;
+                Ok(inserted)
+            })
+            .await?;
+        Ok(count)
+    }
+
     // ── Dashboard Aggregations ───────────────────────────────────────
 
     pub async fn get_dashboard_stats(
@@ -382,6 +511,7 @@ pub struct DownloadEvent {
     pub miss_bytes: i64,
     pub request_count: i64,
     pub hit_rate: f64,
+    pub app_id: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -406,6 +536,7 @@ pub struct CacheSnapshot {
     pub total_size_bytes: i64,
     pub total_files: i64,
     pub details_json: Option<String>,
+    pub taken_at: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -417,6 +548,17 @@ pub struct DashboardStats {
     pub hit_rate: f64,
     pub total_downloads: i64,
     pub unique_clients: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CachedGameSummary {
+    pub name: String,
+    pub service: String,
+    pub app_id: Option<String>,
+    pub total_bytes: i64,
+    pub hit_bytes: i64,
+    pub miss_bytes: i64,
+    pub last_downloaded: String,
 }
 
 // ── Schema ───────────────────────────────────────────────────────────
