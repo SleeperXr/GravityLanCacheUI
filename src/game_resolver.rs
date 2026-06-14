@@ -1,7 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use once_cell::sync::Lazy;
+use tokio::sync::RwLock;
 
 use crate::AppState;
+
+/// In-memory cache for resolved (and unresolved/None) game mappings to avoid slamming the database during high-throughput log scanning.
+static RESOLVE_CACHE: Lazy<RwLock<HashMap<(String, String), Option<String>>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
 /// Resolves download identifiers (e.g. Steam depot IDs) to human-readable game names.
 pub struct GameResolver;
@@ -13,32 +19,56 @@ impl GameResolver {
         service: &str,
         download_id: &str,
     ) -> Option<String> {
-        // Check local DB cache first
+        let cache_key = (service.to_string(), download_id.to_string());
+
+        // 1. Check in-memory cache first
+        {
+            let cache = RESOLVE_CACHE.read().await;
+            if let Some(cached_val) = cache.get(&cache_key) {
+                return cached_val.clone();
+            }
+        }
+
+        // 2. Check local DB cache
+        let resolved;
+        let mut resolved_online = false;
+
         if let Ok(Some(name)) = state
             .db
             .get_game_name(service.to_string(), download_id.to_string())
             .await
         {
-            return Some(name);
+            resolved = Some(name);
+        } else {
+            // 3. Attempt online resolution
+            resolved = match service {
+                "steam" => resolve_steam_depot(state, download_id).await,
+                _ => None,
+            };
+            if resolved.is_some() {
+                resolved_online = true;
+            }
         }
 
-        // Attempt online resolution
-        let resolved = match service {
-            "steam" => resolve_steam_depot(state, download_id).await,
-            _ => None,
-        };
+        // 4. Save to DB if resolved online
+        if resolved_online {
+            if let Some(ref name) = resolved {
+                let _ = state
+                    .db
+                    .save_game_mapping(
+                        service.to_string(),
+                        download_id.to_string(),
+                        name.clone(),
+                        None,
+                    )
+                    .await;
+            }
+        }
 
-        // Cache the result if found
-        if let Some(ref name) = resolved {
-            let _ = state
-                .db
-                .save_game_mapping(
-                    service.to_string(),
-                    download_id.to_string(),
-                    name.clone(),
-                    None,
-                )
-                .await;
+        // 5. Populate in-memory cache (caches both Some and None)
+        {
+            let mut cache = RESOLVE_CACHE.write().await;
+            cache.insert(cache_key, resolved.clone());
         }
 
         resolved

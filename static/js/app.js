@@ -218,9 +218,14 @@ async function renderDashboard(container) {
 
     <!-- Live Network Traffic Card -->
     <div class="card" style="margin-bottom:var(--space-md)">
-      <div class="card-header" style="justify-content:space-between">
-        <div class="card-title" style="display:flex;align-items:center;gap:8px">📶 Live Network Traffic (Unraid Host)</div>
-        <div id="net-interfaces-list" style="font-size:0.8rem;color:var(--text-muted)">
+      <div class="card-header" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div class="card-title" style="display:flex;align-items:center;gap:12px">
+          <span>📶 Live Network Traffic (Unraid Host)</span>
+          <select id="net-interface-select" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border-subtle);border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer;outline:none;font-weight:600">
+            <option value="all">All Interfaces</option>
+          </select>
+        </div>
+        <div id="net-interfaces-list" style="font-size:0.8rem;color:var(--text-muted);font-family:var(--font-mono)">
           Loading network interfaces...
         </div>
       </div>
@@ -296,24 +301,25 @@ function updateParserProgress(status) {
   container.style.display = 'flex';
 
   if (status.is_catching_up) {
-    container.style.background = 'rgba(99, 102, 241, 0.1)';
-    container.style.borderColor = 'rgba(99, 102, 241, 0.25)';
+    container.classList.remove('live');
     if (label) {
+      label.classList.remove('live');
       label.textContent = '⚡ SCANNING...';
-      label.style.color = 'var(--accent-primary-light)';
     }
     if (wrapper) wrapper.style.display = 'block';
-    bar.style.width = status.percentage.toFixed(1) + '%';
+    
+    // Ensure at least 1.5% is visible if progress is > 0 but tiny
+    const displayPercent = status.percentage > 0 ? Math.max(1.5, status.percentage) : 0;
+    bar.style.width = displayPercent.toFixed(1) + '%';
     
     const scannedStr = formatBytes(status.current_offset);
     const totalStr = formatBytes(status.total_size);
     text.textContent = `${status.percentage.toFixed(1)}% (${scannedStr} / ${totalStr})`;
   } else {
-    container.style.background = 'rgba(34, 197, 94, 0.05)';
-    container.style.borderColor = 'rgba(34, 197, 94, 0.2)';
+    container.classList.add('live');
     if (label) {
+      label.classList.add('live');
       label.textContent = '🟢 SCANNING LIVE';
-      label.style.color = 'var(--color-hit)';
     }
     if (wrapper) wrapper.style.display = 'none';
     text.textContent = `Offset: ${formatBytes(status.current_offset)}`;
@@ -962,14 +968,49 @@ function setupLiveFeed() {
 let netTrafficHistory = [];
 
 function updateNetTrafficChart(interfaces) {
+  const select = document.getElementById('net-interface-select');
+  const currentVal = localStorage.getItem('selected_net_interface') || 'all';
+
+  if (select) {
+    // Populate dropdown with detected interface names if it has only "All Interfaces"
+    if (select.options.length <= 1) {
+      select.innerHTML = '<option value="all">All Interfaces</option>';
+      for (const name of Object.keys(interfaces)) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        if (name === currentVal) opt.selected = true;
+        select.appendChild(opt);
+      }
+      
+      select.addEventListener('change', (e) => {
+        localStorage.setItem('selected_net_interface', e.target.value);
+        netTrafficHistory = []; // Reset history so graph scaling adjusts smoothly
+      });
+    }
+  }
+
   let totalRx = 0;
   let totalTx = 0;
   let activeInts = [];
 
-  for (const [name, data] of Object.entries(interfaces)) {
-    totalRx += data.rx_bytes_sec;
-    totalTx += data.tx_bytes_sec;
-    activeInts.push(`${name}: rx ${formatBytes(data.rx_bytes_sec)}/s, tx ${formatBytes(data.tx_bytes_sec)}/s`);
+  const selectedInterface = localStorage.getItem('selected_net_interface') || 'all';
+
+  if (selectedInterface === 'all') {
+    for (const [name, data] of Object.entries(interfaces)) {
+      totalRx += data.rx_bytes_sec;
+      totalTx += data.tx_bytes_sec;
+      activeInts.push(`${name}: rx ${formatBytes(data.rx_bytes_sec)}/s, tx ${formatBytes(data.tx_bytes_sec)}/s`);
+    }
+  } else {
+    const data = interfaces[selectedInterface];
+    if (data) {
+      totalRx = data.rx_bytes_sec;
+      totalTx = data.tx_bytes_sec;
+      activeInts.push(`${selectedInterface}: rx ${formatBytes(totalRx)}/s, tx ${formatBytes(totalTx)}/s`);
+    } else {
+      activeInts.push(`${selectedInterface} (offline)`);
+    }
   }
 
   const detailsEl = document.getElementById('net-interfaces-list');

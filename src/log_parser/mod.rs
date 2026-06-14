@@ -519,9 +519,9 @@ async fn process_log_file(
 
         lines_processed += 1;
 
-        // Periodically save state and broadcast progress every 1000 lines or 1 second
+        // Periodically save state and broadcast progress every 50000 lines or 2 seconds
         let now_instant = std::time::Instant::now();
-        if lines_processed % 1000 == 0 || now_instant.duration_since(last_update_time).as_secs() >= 1 {
+        if lines_processed % 50000 == 0 || now_instant.duration_since(last_update_time).as_secs() >= 2 {
             last_update_time = now_instant;
             
             // Flush aggregates to the database!
@@ -600,13 +600,20 @@ fn find_offset_for_days_ago(path: &std::path::Path, days: u32) -> i64 {
             continue;
         }
 
+        let mut found_date = None;
         let mut test_line = String::new();
-        if reader.read_line(&mut test_line).is_err() || test_line.is_empty() {
-            high = mid;
-            continue;
+        for _ in 0..20 {
+            test_line.clear();
+            if reader.read_line(&mut test_line).is_err() || test_line.is_empty() {
+                break;
+            }
+            if let Some(dt) = parse_date_from_line(test_line.trim()) {
+                found_date = Some(dt);
+                break;
+            }
         }
 
-        if let Some(dt) = parse_date_from_line(test_line.trim()) {
+        if let Some(dt) = found_date {
             if dt < target_time {
                 low = mid;
             } else {

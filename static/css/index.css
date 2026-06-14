@@ -630,3 +630,94 @@ tbody tr:hover {
 .page-enter {
   animation: fadeIn 0.25s ease forwards;
 }
+
+/* ── Parser Progress Bar ────────────────────────────────────────────── */
+.parser-progress-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  flex: 1;
+  max-width: 500px;
+  margin: 0 var(--space-md);
+  box-shadow: var(--shadow-sm), 0 0 15px rgba(99, 102, 241, 0.05);
+  transition: all var(--transition-normal);
+}
+
+.parser-progress-container.live {
+  background: rgba(16, 185, 129, 0.05);
+  border-color: rgba(16, 185, 129, 0.2);
+  box-shadow: var(--shadow-sm), 0 0 15px rgba(16, 185, 129, 0.05);
+}
+
+.parser-progress-label {
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--accent-primary-light);
+  font-size: 0.75rem;
+}
+
+.parser-progress-label.live {
+  color: var(--color-hit);
+}
+
+.parser-progress-bar-wrapper {
+  flex: 1;
+  min-width: 80px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+}
+
+.parser-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-primary-light));
+  width: 0%;
+  min-width: 4px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+/* Pulsing shimmer effect when scanning */
+.parser-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+.parser-progress-text {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+@keyframes shimmer {
+  0% { background-position: -150% 0; }
+  100% { background-position: 150% 0; }
+}
+
+@media (max-width: 768px) {
+  .parser-progress-container {
+    display: none !important;
+  }
+}
