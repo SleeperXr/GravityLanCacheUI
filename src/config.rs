@@ -9,6 +9,7 @@ pub struct AppConfig {
     pub steam_api_key: Option<String>,
     pub cache_scan_interval_secs: u64,
     pub log_retention_days: u32,
+    pub log_scan_days: u32,
     pub listen_port: u16,
     pub excluded_ips: Vec<String>,
     pub config_file_path: String,
@@ -38,6 +39,10 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(90),
+            log_scan_days: std::env::var("LOG_SCAN_DAYS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(7),
             listen_port: std::env::var("LISTEN_PORT")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -70,6 +75,9 @@ impl AppConfig {
         if let Some(days) = p.log_retention_days {
             self.log_retention_days = days;
         }
+        if let Some(scan_days) = p.log_scan_days {
+            self.log_scan_days = scan_days;
+        }
         if let Some(ips) = p.excluded_ips {
             self.excluded_ips = ips;
         }
@@ -84,6 +92,7 @@ impl AppConfig {
             steam_api_key: self.steam_api_key.clone(),
             cache_scan_interval_secs: Some(self.cache_scan_interval_secs),
             log_retention_days: Some(self.log_retention_days),
+            log_scan_days: Some(self.log_scan_days),
             excluded_ips: Some(self.excluded_ips.clone()),
             db_path: Some(self.db_path.clone()),
         };
@@ -104,6 +113,7 @@ struct PersistedConfig {
     steam_api_key: Option<String>,
     cache_scan_interval_secs: Option<u64>,
     log_retention_days: Option<u32>,
+    log_scan_days: Option<u32>,
     excluded_ips: Option<Vec<String>>,
     db_path: Option<String>,
 }

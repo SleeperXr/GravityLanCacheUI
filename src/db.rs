@@ -284,6 +284,26 @@ impl Database {
         Ok(name)
     }
 
+    pub async fn get_steam_app_id(
+        &self,
+        depot_id: String,
+    ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let app_id = self
+            .conn
+            .call(move |conn| {
+                let result = conn
+                    .query_row(
+                        "SELECT app_id FROM game_mappings WHERE service='steam' AND download_id=?1",
+                        params![depot_id],
+                        |row| row.get(0),
+                    )
+                    .ok();
+                Ok(result)
+            })
+            .await?;
+        Ok(app_id)
+    }
+
     pub async fn save_game_mapping(
         &self,
         service: String,

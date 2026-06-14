@@ -235,18 +235,23 @@ async fn process_log_file(
         parse_state.last_offset
     };
 
-    // Cap the initial scan size to avoid hanging on massive files.
-    // If we are starting from 0 (first run or reset) and the file is larger than 250 MB,
-    // skip to the last 200 MB of the log to compile recent history quickly.
-    const MAX_INITIAL_SCAN_BYTES: i64 = 200_000_000; // 200 MB
-    if start_offset == 0 && file_len > (MAX_INITIAL_SCAN_BYTES + 50_000_000) {
-        let skip_to = file_len - MAX_INITIAL_SCAN_BYTES;
-        tracing::info!(
-            "Log file is extremely large ({:.2} GB). Skipping to last {} MB to parse recent history quickly.",
-            file_len as f64 / 1_000_000_000.0,
-            MAX_INITIAL_SCAN_BYTES / 1_000_000
-        );
-        start_offset = skip_to;
+    let log_scan_days = {
+        let config = state.config.read().await;
+        config.log_scan_days
+    };
+
+    // If we are starting from 0 (first run or reset)
+    if start_offset == 0 && log_scan_days > 0 {
+        tracing::info!("Locating starting log offset for the last {} days...", log_scan_days);
+        let target_offset = find_offset_for_days_ago(path, log_scan_days);
+        if target_offset > 0 {
+            tracing::info!("Target date found at offset {} bytes. Parsing from there.", target_offset);
+            start_offset = target_offset;
+        } else {
+            tracing::info!("Target date offset not found or log is shorter. Starting scan from beginning.");
+        }
+    } else if start_offset == 0 && log_scan_days == 0 {
+        tracing::info!("Log Scan History is set to unlimited. Scanning entire log file from beginning...");
     }
 
     let mut reader = BufReader::new(file);
@@ -543,4 +548,89 @@ async fn process_log_file(
             }
         }
     }
+}
+
+/// Helper to parse timestamp from a raw log line
+fn parse_date_from_line(line: &str) -> Option<NaiveDateTime> {
+    let entry = parse_log_line(line)?;
+    let ts_str = parse_timestamp(&entry.timestamp); // returns YYYY-MM-DDTHH:MM:SS
+    NaiveDateTime::parse_from_str(&ts_str, "%Y-%m-%dT%H:%M:%S").ok()
+}
+
+/// Perform binary search on access.log to find the byte offset where N days ago begins
+fn find_offset_for_days_ago(path: &std::path::Path, days: u32) -> i64 {
+    if days == 0 {
+        return 0;
+    }
+
+    let file = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return 0,
+    };
+
+    let len = match file.metadata() {
+        Ok(m) => m.len() as i64,
+        Err(_) => return 0,
+    };
+
+    if len < 4096 {
+        return 0;
+    }
+
+    let target_time = chrono::Utc::now().naive_utc() - chrono::Duration::days(days as i64);
+
+    let mut low = 0i64;
+    let mut high = len;
+    let mut reader = BufReader::new(file);
+
+    for _ in 0..24 {
+        if high - low < 4096 {
+            break;
+        }
+
+        let mid = low + (high - low) / 2;
+        if reader.seek(SeekFrom::Start(mid as u64)).is_err() {
+            break;
+        }
+
+        // Align to start of next line
+        let mut dummy = String::new();
+        if reader.read_line(&mut dummy).is_err() {
+            high = mid;
+            continue;
+        }
+
+        let mut test_line = String::new();
+        if reader.read_line(&mut test_line).is_err() || test_line.is_empty() {
+            high = mid;
+            continue;
+        }
+
+        if let Some(dt) = parse_date_from_line(test_line.trim()) {
+            if dt < target_time {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        } else {
+            high = mid;
+        }
+    }
+
+    // Align to the start of a clean line at 'low'
+    if low > 0 {
+        if let Ok(file) = std::fs::File::open(path) {
+            let mut reader = BufReader::new(file);
+            if reader.seek(SeekFrom::Start(low as u64)).is_ok() {
+                let mut dummy = String::new();
+                if reader.read_line(&mut dummy).is_ok() {
+                    if let Ok(pos) = reader.stream_position() {
+                        return pos as i64;
+                    }
+                }
+            }
+        }
+    }
+
+    low
 }

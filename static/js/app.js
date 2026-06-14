@@ -299,7 +299,7 @@ function updateParserProgress(status) {
     container.style.background = 'rgba(99, 102, 241, 0.1)';
     container.style.borderColor = 'rgba(99, 102, 241, 0.25)';
     if (label) {
-      label.textContent = '⚡ SCANNING HISTORICAL LOGS...';
+      label.textContent = '⚡ SCANNING...';
       label.style.color = 'var(--accent-primary-light)';
     }
     if (wrapper) wrapper.style.display = 'block';
@@ -455,8 +455,56 @@ async function loadCacheData() {
     // Render cached games table
     const tableContainer = document.getElementById('cache-games-table');
     if (tableContainer) {
-      if (!res.games || res.games.length === 0) {
-        tableContainer.innerHTML = '<div class="empty-state"><div class="icon">💾</div>No cached games recorded yet</div>';
+      let items = [];
+      let isDiskCache = false;
+      
+      if (res.snapshot && res.snapshot.details_json) {
+        try {
+          const details = JSON.parse(res.snapshot.details_json);
+          if (details && details.items && details.items.length > 0) {
+            items = details.items;
+            isDiskCache = true;
+          }
+        } catch (e) {
+          console.error('Failed to parse cache details JSON:', e);
+        }
+      }
+      
+      if (!isDiskCache) {
+        // Fallback to traffic log statistics
+        items = (res.games || []).map(g => ({
+          name: g.name,
+          service: g.service,
+          app_id: g.app_id,
+          size_bytes: g.total_bytes,
+          file_count: null,
+          hit_rate: g.total_bytes > 0 ? (g.hit_bytes / g.total_bytes) * 100 : 0,
+          last_accessed: g.last_downloaded,
+        }));
+      } else {
+        // Sort disk cache items by size descending
+        items.sort((a, b) => b.size_bytes - a.size_bytes);
+        items = items.map(i => {
+          const displayName = i.game_name || i.download_id || i.service.toUpperCase();
+          // Cross-reference with traffic log stats for hit rate and last accessed
+          const match = (res.games || []).find(g => 
+            g.service === i.service && 
+            (g.name === i.game_name || (i.app_id && g.app_id === i.app_id) || (i.download_id && g.download_id === i.download_id))
+          );
+          return {
+            name: displayName,
+            service: i.service,
+            app_id: i.app_id,
+            size_bytes: i.size_bytes,
+            file_count: i.file_count,
+            hit_rate: match ? (match.total_bytes > 0 ? (match.hit_bytes / match.total_bytes) * 100 : 0) : null,
+            last_accessed: match ? match.last_downloaded : null,
+          };
+        });
+      }
+
+      if (items.length === 0) {
+        tableContainer.innerHTML = '<div class="empty-state"><div class="icon">💾</div>No cached files or games recorded yet</div>';
       } else {
         tableContainer.innerHTML = `
           <table>
@@ -464,15 +512,15 @@ async function loadCacheData() {
               <tr>
                 <th>Game / Platform</th>
                 <th>Service</th>
-                <th>Total Cached</th>
+                <th>Size ${isDiskCache ? 'on Disk' : 'Cached'}</th>
+                <th>Details</th>
                 <th>Hit Rate</th>
                 <th>Last Accessed</th>
               </tr>
             </thead>
             <tbody>
-              ${res.games.map(g => {
-                const total = g.total_bytes;
-                const hitRate = total > 0 ? (g.hit_bytes / total) * 100 : 0;
+              ${items.map(g => {
+                const detailsText = g.file_count !== null ? `${g.file_count.toLocaleString()} files` : 'Traffic log';
                 return `
                   <tr>
                     <td>
@@ -484,14 +532,10 @@ async function loadCacheData() {
                       </div>
                     </td>
                     <td>${serviceBadge(g.service)}</td>
-                    <td>
-                      <div style="display:flex;flex-direction:column;align-items:flex-start">
-                        <span style="font-weight:700;color:var(--text-primary)">${formatBytes(total)}</span>
-                        <span style="font-size:0.75rem;color:var(--text-muted)">${formatBytes(g.hit_bytes)} hit / ${formatBytes(g.miss_bytes)} miss</span>
-                      </div>
-                    </td>
-                    <td>${hitRateBadge(hitRate)}</td>
-                    <td>${timeAgo(g.last_downloaded)}</td>
+                    <td><span style="font-weight:700;color:var(--text-primary)">${formatBytes(g.size_bytes)}</span></td>
+                    <td style="color:var(--text-muted);font-size:0.8rem">${detailsText}</td>
+                    <td>${g.hit_rate !== null ? hitRateBadge(g.hit_rate) : '<span class="badge badge-service badge-other">—</span>'}</td>
+                    <td>${g.last_accessed ? timeAgo(g.last_accessed) : '—'}</td>
                   </tr>
                 `;
               }).join('')}
@@ -666,6 +710,14 @@ async function renderSettings(container) {
         <input class="input" id="setting-retention" type="number" min="1"
           value="${config.log_retention_days || 90}">
       </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;color:var(--text-secondary);font-size:0.85rem;margin-bottom:6px">Log Scan History (days)</label>
+        <input class="input" id="setting-log-scan-days" type="number" min="0"
+          value="${config.log_scan_days !== undefined ? config.log_scan_days : 7}">
+        <p style="color:var(--text-muted);font-size:0.75rem;margin-top:4px">
+          How many days of history the log parser will scan on initial run or reset. Set to 0 to scan the entire log file (not recommended for files > 1GB).
+        </p>
+      </div>
     </div>
 
     <div class="card" style="margin-bottom:var(--space-md)">
@@ -769,6 +821,8 @@ async function saveSettings() {
     const cache_scan_interval_secs = parseInt(document.getElementById('setting-scan-interval').value, 10) || 0;
     const db_path = document.getElementById('setting-db-path').value.trim();
     const log_retention_days = parseInt(document.getElementById('setting-retention').value, 10) || 90;
+    const raw_log_scan_days = parseInt(document.getElementById('setting-log-scan-days').value, 10);
+    const log_scan_days = isNaN(raw_log_scan_days) ? 7 : raw_log_scan_days;
     const excluded_ips = document.getElementById('setting-excluded-ips').value
       .split(',')
       .map(ip => ip.trim())
@@ -779,6 +833,7 @@ async function saveSettings() {
       cache_scan_interval_secs,
       db_path,
       log_retention_days,
+      log_scan_days,
       excluded_ips,
     });
     btn.textContent = '✅ Saved!';

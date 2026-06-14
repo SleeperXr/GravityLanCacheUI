@@ -125,6 +125,7 @@ async fn get_config(State(state): State<Arc<AppState>>) -> Json<serde_json::Valu
         "steam_api_key_set": config.steam_api_key.is_some(),
         "db_path": config.db_path,
         "steam_mappings_count": mappings_count,
+        "log_scan_days": config.log_scan_days,
     }))
 }
 
@@ -133,6 +134,7 @@ struct UpdateConfigInput {
     steam_api_key: Option<String>,
     cache_scan_interval_secs: u64,
     log_retention_days: u32,
+    log_scan_days: u32,
     db_path: String,
     excluded_ips: Vec<String>,
 }
@@ -155,6 +157,7 @@ async fn update_config(
     
     config.cache_scan_interval_secs = body.cache_scan_interval_secs;
     config.log_retention_days = body.log_retention_days;
+    config.log_scan_days = body.log_scan_days;
     config.db_path = body.db_path;
     config.excluded_ips = body.excluded_ips;
 
