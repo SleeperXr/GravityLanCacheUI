@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  gravitylancacheui:
+    build: .
+    image: gravitylancacheui:latest
+    container_name: gravitylancacheui
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    environment:
+      - TZ=Europe/Berlin
+      - LANCACHE_LOGS_DIR=/lancache/logs
+      - LANCACHE_CACHE_DIR=/lancache/cache
+      - CACHE_SCAN_INTERVAL_SECS=300
+      - LOG_RETENTION_DAYS=90
+      # - STEAM_API_KEY=your_key_here
+      # - EXCLUDED_IPS=192.168.1.1,10.0.0.1
+    volumes:
+      # Persistent data (database + config)
+      - ./data:/data/gravitylancacheui
+
+      # Lancache logs (read-only) — adjust path to your setup
+      - /mnt/user/appdata/lancache/logs:/lancache/logs:ro
+
+      # Lancache cache directory (read-only) — adjust path to your setup
+      - /mnt/user/lancache:/lancache/cache:ro

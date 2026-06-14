@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>GravityLancacheUI</Name>
+  <Repository>sleeperxr/gravitylancacheui:latest</Repository>
+  <Registry>https://hub.docker.com/r/sleeperxr/gravitylancacheui</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/sleeperxr/GravityLancacheUI/issues</Support>
+  <Project>https://github.com/sleeperxr/GravityLancacheUI</Project>
+  <Overview>Ein hochmodernes, schnelles und datenreiches Dashboard für deinen LanCache (Monolithic). Bietet Live-Statistiken, detaillierte Disk- und Cache-Analyse sowie integriertes Prefill-Management.</Overview>
+  <Category>Tools:Utilities Status:Beta</Category>
+  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/devedse/DeveLanCacheUI/master/DeveLanCacheUI/wwwroot/favicon.ico</Icon>
+  
+  <!-- Port 8080 for WebUI -->
+  <Config Name="WebUI Port" Target="8080" Default="8080" Mode="tcp" Description="Der Port für das Webinterface." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  
+  <!-- Volume for persistent config & SQLite database -->
+  <Config Name="Appdata Directory" Target="/data/gravitylancacheui" Default="/mnt/user/appdata/gravitylancacheui" Mode="rw" Description="Speicherort für die SQLite-Datenbank und die Konfigurationsdatei." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/gravitylancacheui</Config>
+  
+  <!-- Volume for Lancache logs -->
+  <Config Name="LanCache Logs" Target="/data/logs" Default="/mnt/user/appdata/lancache/logs" Mode="ro" Description="Der Pfad zu den Logs deines LanCache-Monolithic-Containers (lesend)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/lancache/logs</Config>
+  
+  <!-- Volume for Lancache cache directory -->
+  <Config Name="LanCache Cache" Target="/data/cache" Default="/mnt/user/lancache" Mode="ro" Description="Der Pfad zum Cache-Verzeichnis deines LanCache-Monolithic-Containers für die Disk-Analyse (lesend)." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/lancache</Config>
+  
+  <!-- Environment variables -->
+  <Config Name="Zeitzone" Target="TZ" Default="Europe/Berlin" Description="Die Zeitzone für die korrekte Zeitanzeige in den Logs und Diagrammen." Type="Variable" Display="always" Required="true" Mask="false">Europe/Berlin</Config>
+  <Config Name="Cache Scan Intervall (Sekunden)" Target="CACHE_SCAN_INTERVAL_SECS" Default="300" Description="Wie oft soll das Cache-Verzeichnis nach neuen Dateien gescannt werden? Standard: 300 Sekunden (5 Minuten)." Type="Variable" Display="always" Required="false" Mask="false">300</Config>
+  <Config Name="Log Retention (Tage)" Target="LOG_RETENTION_DAYS" Default="90" Description="Wie viele Tage sollen die historischen Download-Statistiken in der Datenbank aufbewahrt werden?" Type="Variable" Display="always" Required="false" Mask="false">90</Config>
+  <Config Name="Steam API Key" Target="STEAM_API_KEY" Default="" Description="Optionaler Steam Web API Key zur besseren Game-Name-Auflösung über Steam-Depot-IDs." Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Ausgeschlossene IPs" Target="EXCLUDED_IPS" Default="" Description="Kommagetrennte Liste von Client-IPs, die in den Downloads ignoriert werden sollen (z.B. Prefill-Clients)." Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="RUST_LOG" Target="RUST_LOG" Default="gravitylancacheui=info" Description="Log-Level des Backends (info, debug, trace, warn, error)." Type="Variable" Display="advanced" Required="false" Mask="false">gravitylancacheui=info</Config>
+</Container>
