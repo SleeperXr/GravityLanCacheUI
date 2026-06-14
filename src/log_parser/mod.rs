@@ -12,13 +12,22 @@ use crate::AppState;
 
 pub use service_detector::ServiceDetector;
 
-/// Regex for the standard Lancache NGINX combined log format.
-/// Format: $remote_addr - - [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" "$host" "$upstream_cache_status"
-static LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
+/// Regex for the LanCache Monolithic custom 'cachelog' format:
+/// [$cacheidentifier] $remote_addr / $http_x_forwarded_for - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" "$upstream_cache_status" "$host" "$http_range"
+static CACHELOG_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"^(\S+) - - \[([^\]]+)\] "(\S+) (\S+) \S+" (\d{3}) (\d+) "[^"]*" "[^"]*" "([^"]*)" "([^"]*)""#,
+        r#"^\[([^\]]+)\]\s+(\S+)\s+/\s+\S+\s+-\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+(\S+)\s+\S+"\s+(\d{3})\s+(\d+)\s+"[^"]*"\s+"[^"]*"\s+"([^"]*)"\s+"([^"]*)"(?:\s+"[^"]*")?"#
     )
-    .expect("Invalid log regex")
+    .expect("Invalid cachelog regex")
+});
+
+/// Fallback Regex for standard NGINX combined log format with custom fields:
+/// $remote_addr - - [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" "$upstream_cache_status" "$host"
+static COMBINED_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"^(\S+)\s+-\s+\S+\s+\[([^\]]+)\]\s+"(\S+)\s+(\S+)\s+\S+"\s+(\d{3})\s+(\d+)\s+"[^"]*"\s+"[^"]*"\s+"([^"]*)"\s+"([^"]*)""#
+    )
+    .expect("Invalid combined regex")
 });
 
 /// Regex to extract Steam depot ID from URL path: /depot/XXXXX/
@@ -43,32 +52,69 @@ pub struct LogEntry {
 
 /// Parse a single NGINX access log line into a structured entry.
 fn parse_log_line(line: &str) -> Option<LogEntry> {
-    let caps = LOG_REGEX.captures(line)?;
+    // 1. Try to parse with LanCache monolithic 'cachelog' regex
+    if let Some(caps) = CACHELOG_REGEX.captures(line) {
+        let service_ident = caps.get(1)?.as_str().to_string();
+        let client_ip = caps.get(2)?.as_str().to_string();
+        let timestamp = caps.get(3)?.as_str().to_string();
+        let method = caps.get(4)?.as_str().to_string();
+        let url = caps.get(5)?.as_str().to_string();
+        let status: u16 = caps.get(6)?.as_str().parse().ok()?;
+        let bytes_sent: i64 = caps.get(7)?.as_str().parse().ok()?;
+        let cache_status = caps.get(8)?.as_str().to_uppercase();
+        let host = caps.get(9)?.as_str().to_string();
 
-    let client_ip = caps.get(1)?.as_str().to_string();
-    let timestamp = caps.get(2)?.as_str().to_string();
-    let method = caps.get(3)?.as_str().to_string();
-    let url = caps.get(4)?.as_str().to_string();
-    let status: u16 = caps.get(5)?.as_str().parse().ok()?;
-    let bytes_sent: i64 = caps.get(6)?.as_str().parse().ok()?;
-    let host = caps.get(7)?.as_str().to_string();
-    let cache_status = caps.get(8)?.as_str().to_uppercase();
+        // Use the cache identifier (e.g. "steam", "blizzard") if it is specific, otherwise fallback to host detection
+        let service = if service_ident == "generic" || service_ident.is_empty() {
+            ServiceDetector::detect(&host)
+        } else {
+            service_ident
+        };
+        let download_id = extract_download_id(&service, &url);
 
-    let service = ServiceDetector::detect(&host);
-    let download_id = extract_download_id(&service, &url);
+        return Some(LogEntry {
+            client_ip,
+            timestamp,
+            method,
+            url,
+            status,
+            bytes_sent,
+            host,
+            cache_status,
+            service,
+            download_id,
+        });
+    }
 
-    Some(LogEntry {
-        client_ip,
-        timestamp,
-        method,
-        url,
-        status,
-        bytes_sent,
-        host,
-        cache_status,
-        service,
-        download_id,
-    })
+    // 2. Try combined nginx format fallback
+    if let Some(caps) = COMBINED_REGEX.captures(line) {
+        let client_ip = caps.get(1)?.as_str().to_string();
+        let timestamp = caps.get(2)?.as_str().to_string();
+        let method = caps.get(3)?.as_str().to_string();
+        let url = caps.get(4)?.as_str().to_string();
+        let status: u16 = caps.get(5)?.as_str().parse().ok()?;
+        let bytes_sent: i64 = caps.get(6)?.as_str().parse().ok()?;
+        let cache_status = caps.get(7)?.as_str().to_uppercase();
+        let host = caps.get(8)?.as_str().to_string();
+
+        let service = ServiceDetector::detect(&host);
+        let download_id = extract_download_id(&service, &url);
+
+        return Some(LogEntry {
+            client_ip,
+            timestamp,
+            method,
+            url,
+            status,
+            bytes_sent,
+            host,
+            cache_status,
+            service,
+            download_id,
+        });
+    }
+
+    None
 }
 
 /// Extract a platform-specific download identifier from the URL.

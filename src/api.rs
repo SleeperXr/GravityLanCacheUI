@@ -18,6 +18,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/downloads", get(downloads))
         .route("/setup/check", get(setup_check))
         .route("/config", get(get_config).put(update_config))
+        .route("/logs", get(get_logs))
         .route("/prefill/status", get(prefill_status))
         .route("/prefill/run/{platform}", axum::routing::post(prefill_run))
         .route("/ws", get(ws_handler))
@@ -191,5 +192,16 @@ async fn handle_ws(
                 }
             }
         }
+    }
+}
+
+// ── Backend Logs ─────────────────────────────────────────────────────
+
+async fn get_logs() -> impl IntoResponse {
+    if let Ok(logs) = crate::BACKEND_LOGS.lock() {
+        let list: Vec<String> = logs.iter().cloned().collect();
+        Json(list)
+    } else {
+        Json(vec![])
     }
 }

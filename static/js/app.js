@@ -126,6 +126,7 @@ const pages = {
   clients: renderClients,
   prefill: renderPrefill,
   settings: renderSettings,
+  logs: renderLogs,
 };
 
 let currentPage = 'dashboard';
@@ -143,6 +144,7 @@ function navigate(page) {
     clients: 'Clients',
     prefill: 'Prefill Manager',
     settings: 'Settings',
+    logs: 'Backend Logs',
   };
   document.getElementById('page-title').textContent = titleMap[page] || page;
 
@@ -182,6 +184,19 @@ async function renderDashboard(container) {
       </div>
     </div>
 
+    <!-- Live Network Traffic Card -->
+    <div class="card" style="margin-bottom:var(--space-md)">
+      <div class="card-header" style="justify-content:space-between">
+        <div class="card-title" style="display:flex;align-items:center;gap:8px">📶 Live Network Traffic (Unraid Host)</div>
+        <div id="net-interfaces-list" style="font-size:0.8rem;color:var(--text-muted)">
+          Loading network interfaces...
+        </div>
+      </div>
+      <div style="height:120px;position:relative;margin-top:12px;background:#05070c;border:1px solid var(--border-subtle);border-radius:6px;overflow:hidden">
+        <canvas id="net-traffic-chart" style="width:100%;height:100%;display:block"></canvas>
+      </div>
+    </div>
+
     <div style="display:grid;grid-template-columns:2fr 1fr;gap:var(--space-md)">
       <div class="card">
         <div class="card-header">
@@ -205,6 +220,8 @@ async function renderDashboard(container) {
   `;
 
   loadDashboardData();
+  // Draw empty chart initially
+  setTimeout(drawNetTrafficChart, 50);
 }
 
 async function loadDashboardData() {
@@ -595,7 +612,195 @@ function setupLiveFeed() {
       // Keep max 50 items
       while (feed.children.length > 50) feed.removeChild(feed.lastChild);
     }
+
+    if (data.type === 'network_traffic') {
+      updateNetTrafficChart(data.interfaces);
+    }
   });
+}
+
+// ── Network Traffic Chart ──────────────────────────────────────────
+
+let netTrafficHistory = [];
+
+function updateNetTrafficChart(interfaces) {
+  let totalRx = 0;
+  let totalTx = 0;
+  let activeInts = [];
+
+  for (const [name, data] of Object.entries(interfaces)) {
+    totalRx += data.rx_bytes_sec;
+    totalTx += data.tx_bytes_sec;
+    activeInts.push(`${name}: rx ${formatBytes(data.rx_bytes_sec)}/s, tx ${formatBytes(data.tx_bytes_sec)}/s`);
+  }
+
+  const detailsEl = document.getElementById('net-interfaces-list');
+  if (detailsEl) {
+    detailsEl.innerHTML = activeInts.length > 0
+      ? activeInts.join(' | ')
+      : 'No active network interfaces detected';
+  }
+
+  netTrafficHistory.push({ rx: totalRx, tx: totalTx });
+  if (netTrafficHistory.length > 60) {
+    netTrafficHistory.shift();
+  }
+
+  drawNetTrafficChart();
+}
+
+function drawNetTrafficChart() {
+  const canvas = document.getElementById('net-traffic-chart');
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d');
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  if (netTrafficHistory.length < 2) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Waiting for network traffic data...', w / 2, h / 2);
+    return;
+  }
+
+  let maxVal = 1024 * 1024; // Min 1MB/s scale
+  for (const point of netTrafficHistory) {
+    if (point.rx > maxVal) maxVal = point.rx;
+    if (point.tx > maxVal) maxVal = point.tx;
+  }
+  maxVal *= 1.1;
+
+  const getX = (index) => (index / 59) * w;
+  const getY = (value) => h - (value / maxVal) * (h - 24) - 12;
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i < 4; i++) {
+    const y = (i / 4) * h;
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+  }
+  ctx.stroke();
+
+  const drawLine = (dataKey, strokeColor, fillColor) => {
+    ctx.beginPath();
+    ctx.moveTo(getX(0), getY(netTrafficHistory[0][dataKey]));
+    for (let i = 1; i < netTrafficHistory.length; i++) {
+      ctx.lineTo(getX(i), getY(netTrafficHistory[i][dataKey]));
+    }
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.lineTo(getX(netTrafficHistory.length - 1), h);
+    ctx.lineTo(getX(0), h);
+    ctx.closePath();
+    ctx.fillStyle = fillColor;
+    ctx.fill();
+  };
+
+  drawLine('rx', 'rgba(99, 102, 241, 0.85)', 'rgba(99, 102, 241, 0.08)');
+  drawLine('tx', 'rgba(168, 85, 247, 0.85)', 'rgba(168, 85, 247, 0.04)');
+
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'right';
+
+  const currentRx = netTrafficHistory[netTrafficHistory.length - 1].rx;
+  const currentTx = netTrafficHistory[netTrafficHistory.length - 1].tx;
+
+  ctx.fillStyle = '#818cf8';
+  ctx.fillText(`📥 Down: ${formatBytes(currentRx)}/s`, w - 10, 18);
+  ctx.fillStyle = '#c084fc';
+  ctx.fillText(`📤 Up: ${formatBytes(currentTx)}/s`, w - 10, 32);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+  ctx.fillText(`Max: ${formatBytes(maxVal)}/s`, w - 10, 46);
+}
+
+// ── Page: Logs ───────────────────────────────────────────────────────
+
+let logsInterval = null;
+
+async function renderLogs(container) {
+  if (logsInterval) clearInterval(logsInterval);
+
+  container.innerHTML = `
+    <div class="card" style="display:flex;flex-direction:column;height:calc(100vh - 160px)">
+      <div class="card-header" style="justify-content:space-between">
+        <div class="card-title">📜 Backend System Logs</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="btn-refresh-logs">🔄 Refresh</button>
+          <button class="btn btn-ghost" id="btn-clear-logs" style="color:var(--color-miss)">🗑️ Clear UI</button>
+        </div>
+      </div>
+      <div id="logs-console" style="flex:1;background:#05070c;border:1px solid var(--border-subtle);border-radius:6px;padding:var(--space-md);font-family:var(--font-mono);font-size:0.82rem;overflow-y:auto;white-space:pre-wrap;color:#a9b2c3;line-height:1.45;margin-top:12px">
+        <div style="color:var(--text-muted)">Loading system logs...</div>
+      </div>
+    </div>
+  `;
+
+  async function fetchLogs() {
+    try {
+      const logs = await API.get('/logs');
+      const consoleBox = document.getElementById('logs-console');
+      if (!consoleBox) return;
+
+      if (!logs || logs.length === 0) {
+        consoleBox.innerHTML = '<div style="color:var(--text-muted)">No logs recorded yet.</div>';
+        return;
+      }
+
+      consoleBox.innerHTML = logs.map(line => {
+        let color = '#e2e8f0';
+        if (line.includes('ERROR') || line.includes('error')) color = '#f87171';
+        else if (line.includes('WARN') || line.includes('warn')) color = '#fbbf24';
+        else if (line.includes('INFO') || line.includes('info')) color = '#60a5fa';
+        else if (line.includes('DEBUG') || line.includes('debug')) color = '#c084fc';
+
+        return `<div style="color:${color};margin-bottom:2px">${escapeHtml(line)}</div>`;
+      }).join('');
+
+      consoleBox.scrollTop = consoleBox.scrollHeight;
+    } catch (e) {
+      const consoleBox = document.getElementById('logs-console');
+      if (consoleBox) consoleBox.innerHTML = `<div style="color:var(--color-miss)">Failed to load logs: ${e.message}</div>`;
+    }
+  }
+
+  function escapeHtml(text) {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  fetchLogs();
+  logsInterval = setInterval(fetchLogs, 3000);
+
+  document.getElementById('btn-refresh-logs').addEventListener('click', fetchLogs);
+  document.getElementById('btn-clear-logs').addEventListener('click', () => {
+    const consoleBox = document.getElementById('logs-console');
+    if (consoleBox) consoleBox.innerHTML = '<div style="color:var(--text-muted)">UI Cleared. Waiting for new logs...</div>';
+  });
+
+  const observer = new MutationObserver((mutations, obs) => {
+    if (!document.getElementById('logs-console')) {
+      clearInterval(logsInterval);
+      logsInterval = null;
+      obs.disconnect();
+    }
+  });
+  observer.observe(container, { childList: true });
 }
 
 // ── Init ─────────────────────────────────────────────────────────────

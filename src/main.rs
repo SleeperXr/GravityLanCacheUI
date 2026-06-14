@@ -16,6 +16,43 @@ mod game_resolver;
 mod log_parser;
 mod prefill;
 mod setup_wizard;
+mod network_monitor;
+
+use std::collections::VecDeque;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+use std::io::Write;
+
+/// Thread-safe in-memory circular buffer for storing backend logs
+pub static BACKEND_LOGS: Lazy<Mutex<VecDeque<String>>> = Lazy::new(|| {
+    Mutex::new(VecDeque::with_capacity(1000))
+});
+
+/// A custom writer for tracing that logs to both stdout (for Docker) and the BACKEND_LOGS buffer
+struct LogWriter;
+
+impl Write for LogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let msg = String::from_utf8_lossy(buf).to_string();
+        
+        // Print to standard output (so docker logs still work)
+        std::io::stdout().write_all(buf)?;
+        
+        // Push to in-memory logs
+        if let Ok(mut logs) = BACKEND_LOGS.lock() {
+            if logs.len() >= 1000 {
+                logs.pop_front();
+            }
+            logs.push_back(msg);
+        }
+        
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        std::io::stdout().flush()
+    }
+}
 
 use config::AppConfig;
 use db::Database;
@@ -32,7 +69,7 @@ async fn main() {
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| "gravitylancacheui=info,tower_http=info".into()))
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(|| LogWriter))
         .init();
 
     tracing::info!("🚀 GravityLancacheUI starting...");
@@ -67,6 +104,11 @@ async fn main() {
     let analyzer_state = state.clone();
     tokio::spawn(async move {
         cache_analyzer::run_cache_analyzer(analyzer_state).await;
+    });
+
+    let net_state = state.clone();
+    tokio::spawn(async move {
+        network_monitor::run_network_monitor(net_state).await;
     });
 
     let app = Router::new()
