@@ -2,12 +2,11 @@ version: '3.8'
 
 services:
   gravitylancacheui:
-    build: .
-    image: gravitylancacheui:latest
+    image: sleeperxr/gravitylancacheui:latest
     container_name: gravitylancacheui
     restart: unless-stopped
     ports:
-      - '8080:8080'
+      - '5005:8080'
     environment:
       - TZ=Europe/Berlin
       - LANCACHE_LOGS_DIR=/lancache/logs

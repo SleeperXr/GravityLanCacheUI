@@ -32,7 +32,7 @@ services:
     container_name: gravitylancacheui
     restart: unless-stopped
     ports:
-      - '8080:8080' # Port für das Webinterface
+      - '5005:8080' # Port für das Webinterface
     environment:
       - TZ=Europe/Berlin
       - LANCACHE_LOGS_DIR=/lancache/logs
@@ -60,7 +60,7 @@ Stelle sicher, dass die Host-Pfade auf der rechten Seite der Volumes (`/mnt/...`
 
 ### 3. Container starten
 
-Klicke im Docker Compose Plugin auf **Up**, um den Container herunterzuladen und zu starten. Das Webinterface ist anschließend unter `http://<unraid-ip>:8080` erreichbar.
+Klicke im Docker Compose Plugin auf **Up**, um den Container herunterzuladen und zu starten. Das Webinterface ist anschließend unter `http://<unraid-ip>:5005` erreichbar.
 
 ---
 

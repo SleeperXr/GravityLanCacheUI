@@ -11,12 +11,12 @@
   <Project>https://github.com/sleeperxr/GravityLancacheUI</Project>
   <Overview>Ein hochmodernes, schnelles und datenreiches Dashboard für deinen LanCache (Monolithic). Bietet Live-Statistiken, detaillierte Disk- und Cache-Analyse sowie integriertes Prefill-Management.</Overview>
   <Category>Tools:Utilities Status:Beta</Category>
-  <WebUI>http://[IP]:[PORT:8080]</WebUI>
+  <WebUI>http://[IP]:[PORT:5005]</WebUI>
   <TemplateURL/>
   <Icon>https://raw.githubusercontent.com/devedse/DeveLanCacheUI/master/DeveLanCacheUI/wwwroot/favicon.ico</Icon>
   
   <!-- Port 8080 for WebUI -->
-  <Config Name="WebUI Port" Target="8080" Default="8080" Mode="tcp" Description="Der Port für das Webinterface." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="WebUI Port" Target="8080" Default="5005" Mode="tcp" Description="Der Port für das Webinterface." Type="Port" Display="always" Required="true" Mask="false">5005</Config>
   
   <!-- Volume for persistent config & SQLite database -->
   <Config Name="Appdata Directory" Target="/data/gravitylancacheui" Default="/mnt/user/appdata/gravitylancacheui" Mode="rw" Description="Speicherort für die SQLite-Datenbank und die Konfigurationsdatei." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/gravitylancacheui</Config>
