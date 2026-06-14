@@ -50,7 +50,7 @@ async fn resolve_steam_depot(state: &Arc<AppState>, depot_id: &str) -> Option<St
     // The Steam API doesn't provide a direct depot→app mapping.
     // We use the GetAppList endpoint and maintain a local lookup table.
     // For efficiency, we lazy-load the full app list once and cache it.
-    let api_key = state.config.steam_api_key.as_ref()?;
+    let api_key = state.config.read().await.steam_api_key.clone()?;
 
     let url = format!(
         "https://api.steampowered.com/ISteamApps/GetAppList/v2/?key={}",

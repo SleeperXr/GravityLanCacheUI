@@ -148,10 +148,14 @@ fn hour_key(ts: &str) -> String {
 pub async fn run_log_parser(
     state: Arc<AppState>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let log_path = std::path::PathBuf::from(&state.config.lancache_logs_dir).join("access.log");
-    tracing::info!("Log parser watching: {}", log_path.display());
+    tracing::info!("Log parser task started");
 
     loop {
+        let log_path = {
+            let config = state.config.read().await;
+            std::path::PathBuf::from(&config.lancache_logs_dir).join("access.log")
+        };
+
         if !log_path.exists() {
             tracing::warn!("access.log not found at {}, waiting...", log_path.display());
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -160,8 +164,9 @@ pub async fn run_log_parser(
 
         let parse_state = state.db.get_parse_state().await.unwrap_or_default();
         tracing::info!(
-            "Resuming from offset {} bytes",
-            parse_state.last_offset
+            "Resuming from offset {} bytes for {}",
+            parse_state.last_offset,
+            log_path.display()
         );
 
         match process_log_file(&log_path, &state, parse_state).await {
@@ -239,12 +244,11 @@ async fn process_log_file(
         }
 
         // Skip excluded IPs
-        if state
-            .config
-            .excluded_ips
-            .iter()
-            .any(|ip| trimmed.starts_with(ip.as_str()))
-        {
+        let is_excluded = {
+            let config = state.config.read().await;
+            config.excluded_ips.iter().any(|ip| trimmed.starts_with(ip.as_str()))
+        };
+        if is_excluded {
             continue;
         }
 

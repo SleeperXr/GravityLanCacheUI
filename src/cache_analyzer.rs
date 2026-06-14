@@ -2,24 +2,26 @@ use std::sync::Arc;
 use crate::db::CacheSnapshot;
 use crate::AppState;
 
-/// Periodically scans the lancache cache directory and records disk usage snapshots.
 pub async fn run_cache_analyzer(state: Arc<AppState>) {
-    let cache_dir = std::path::PathBuf::from(&state.config.lancache_cache_dir);
-    let interval_secs = state.config.cache_scan_interval_secs;
-
-    if interval_secs == 0 {
-        tracing::info!("Cache analyzer disabled (interval=0)");
-        return;
-    }
-
-    tracing::info!(
-        "Cache analyzer started: scanning {} every {}s",
-        cache_dir.display(),
-        interval_secs
-    );
+    tracing::info!("Cache analyzer started: background task active");
 
     loop {
+        // Read configuration dynamically on each iteration
+        let (cache_dir, interval_secs) = {
+            let config = state.config.read().await;
+            (
+                std::path::PathBuf::from(&config.lancache_cache_dir),
+                config.cache_scan_interval_secs,
+            )
+        };
+
+        if interval_secs == 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            continue;
+        }
+
         if cache_dir.exists() {
+            tracing::info!("Cache analyzer: starting scan of {}...", cache_dir.display());
             match scan_cache_directory(&cache_dir).await {
                 Ok(snapshot) => {
                     tracing::info!(

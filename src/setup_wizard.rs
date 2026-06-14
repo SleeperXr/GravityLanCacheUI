@@ -26,19 +26,46 @@ pub async fn run_checks(config: &crate::config::AppConfig) -> Vec<SetupCheck> {
         &config.lancache_logs_dir,
     ));
 
-    // 2. access.log file
-    let access_log = std::path::Path::new(&config.lancache_logs_dir).join("access.log");
-    if access_log.exists() {
+    // 2. access.log file and other logs in directory
+    let logs_dir = std::path::Path::new(&config.lancache_logs_dir);
+    let mut log_files = Vec::new();
+    let mut has_access_log = false;
+    
+    if logs_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(logs_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    if filename.ends_with(".log") {
+                        let size = path.metadata().map(|m| m.len()).unwrap_or(0);
+                        log_files.push(format!("{} ({})", filename, format_bytes(size)));
+                        if filename == "access.log" {
+                            has_access_log = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if has_access_log {
         checks.push(SetupCheck {
             name: "access.log File".to_string(),
             status: CheckStatus::Ok,
-            message: format!("Found at {}", access_log.display()),
+            message: format!("Gefunden! Vorhandene Log-Dateien: {}", log_files.join(", ")),
+        });
+    } else if !log_files.is_empty() {
+        checks.push(SetupCheck {
+            name: "access.log File".to_string(),
+            status: CheckStatus::Warning,
+            message: format!("access.log fehlt! Andere Dateien gefunden: {}. LanCache schreibt standardmäßig in access.log.", log_files.join(", ")),
         });
     } else {
         checks.push(SetupCheck {
             name: "access.log File".to_string(),
             status: CheckStatus::Warning,
-            message: format!("Not found at {}. Will wait for it.", access_log.display()),
+            message: format!("Keine Log-Dateien im Verzeichnis {} gefunden. Backend wartet auf Log-Generierung.", config.lancache_logs_dir),
         });
     }
 
@@ -125,4 +152,18 @@ fn check_directory_writable(name: &str, path: &str) -> SetupCheck {
             message: format!("Path is not a directory: {}", path),
         }
     }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    let k = 1024.0;
+    const SIZES: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+    let i = (bytes as f64).log(k).floor() as usize;
+    if i >= SIZES.len() {
+        return format!("{} B", bytes);
+    }
+    let val = bytes as f64 / k.powi(i as i32);
+    format!("{:.2} {}", val, SIZES[i])
 }

@@ -538,13 +538,26 @@ async function saveSettings() {
   const btn = document.getElementById('settings-save');
   btn.textContent = '⏳ Saving...';
   try {
+    const steam_api_key = document.getElementById('setting-steam-key').value;
+    const cache_scan_interval_secs = parseInt(document.getElementById('setting-scan-interval').value, 10) || 0;
+    const db_path = document.getElementById('setting-db-path').value.trim();
+    const log_retention_days = parseInt(document.getElementById('setting-retention').value, 10) || 90;
+    const excluded_ips = document.getElementById('setting-excluded-ips').value
+      .split(',')
+      .map(ip => ip.trim())
+      .filter(Boolean);
+
     await API.put('/config', {
-      cache_scan_interval_secs: parseInt(document.getElementById('setting-scan-interval').value, 10),
-      log_retention_days: parseInt(document.getElementById('setting-retention').value, 10),
+      steam_api_key,
+      cache_scan_interval_secs,
+      db_path,
+      log_retention_days,
+      excluded_ips,
     });
     btn.textContent = '✅ Saved!';
   } catch (e) {
     btn.textContent = '❌ Error';
+    console.error('Failed to save settings:', e);
   }
   setTimeout(() => { btn.textContent = '💾 Save Settings'; }, 2000);
 }
@@ -698,7 +711,7 @@ function drawNetTrafficChart() {
       ctx.lineTo(getX(i), getY(netTrafficHistory[i][dataKey]));
     }
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.stroke();
 
     ctx.lineTo(getX(netTrafficHistory.length - 1), h);
@@ -711,18 +724,18 @@ function drawNetTrafficChart() {
   drawLine('rx', 'rgba(99, 102, 241, 0.85)', 'rgba(99, 102, 241, 0.08)');
   drawLine('tx', 'rgba(168, 85, 247, 0.85)', 'rgba(168, 85, 247, 0.04)');
 
-  ctx.font = '10px monospace';
+  ctx.font = '12px monospace';
   ctx.textAlign = 'right';
 
   const currentRx = netTrafficHistory[netTrafficHistory.length - 1].rx;
   const currentTx = netTrafficHistory[netTrafficHistory.length - 1].tx;
 
   ctx.fillStyle = '#818cf8';
-  ctx.fillText(`📥 Down: ${formatBytes(currentRx)}/s`, w - 10, 18);
+  ctx.fillText(`📥 Down: ${formatBytes(currentRx)}/s`, w - 12, 22);
   ctx.fillStyle = '#c084fc';
-  ctx.fillText(`📤 Up: ${formatBytes(currentTx)}/s`, w - 10, 32);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-  ctx.fillText(`Max: ${formatBytes(maxVal)}/s`, w - 10, 46);
+  ctx.fillText(`📤 Up: ${formatBytes(currentTx)}/s`, w - 12, 38);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+  ctx.fillText(`Max: ${formatBytes(maxVal)}/s`, w - 12, 54);
 }
 
 // ── Page: Logs ───────────────────────────────────────────────────────

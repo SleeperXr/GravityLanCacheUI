@@ -3,71 +3,71 @@
 /* ── Design Tokens ──────────────────────────────────────────────────── */
 :root {
   /* Background */
-  --bg-primary: #0a0e17;
-  --bg-secondary: #111827;
-  --bg-card: #1a1f2e;
-  --bg-card-hover: #1f2537;
-  --bg-input: #151a28;
+  --bg-primary: #060913;
+  --bg-secondary: #0d1322;
+  --bg-card: #161f36;
+  --bg-card-hover: #1e2a4a;
+  --bg-input: #101729;
 
   /* Borders */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-medium: rgba(255, 255, 255, 0.1);
-  --border-accent: rgba(99, 102, 241, 0.3);
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-medium: rgba(255, 255, 255, 0.18);
+  --border-accent: rgba(99, 102, 241, 0.5);
 
   /* Text */
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --text-inverse: #0a0e17;
+  --text-primary: #ffffff;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-inverse: #060913;
 
   /* Accent */
   --accent-primary: #6366f1;
   --accent-primary-light: #818cf8;
-  --accent-primary-glow: rgba(99, 102, 241, 0.15);
+  --accent-primary-glow: rgba(99, 102, 241, 0.25);
 
   /* Semantic */
   --color-hit: #10b981;
-  --color-hit-bg: rgba(16, 185, 129, 0.1);
+  --color-hit-bg: rgba(16, 185, 129, 0.15);
   --color-miss: #f59e0b;
-  --color-miss-bg: rgba(245, 158, 11, 0.1);
+  --color-miss-bg: rgba(245, 158, 11, 0.15);
   --color-error: #ef4444;
-  --color-error-bg: rgba(239, 68, 68, 0.1);
+  --color-error-bg: rgba(239, 68, 68, 0.15);
   --color-info: #3b82f6;
-  --color-info-bg: rgba(59, 130, 246, 0.1);
+  --color-info-bg: rgba(59, 130, 246, 0.15);
 
   /* Service Colors */
   --color-steam: #1b9fff;
-  --color-epic: #2f2f2f;
-  --color-gog: #a865c9;
-  --color-origin: #f56c2d;
-  --color-ubisoft: #0070ff;
-  --color-battlenet: #00aeff;
-  --color-xbox: #107c10;
-  --color-windows: #00a4ef;
-  --color-riot: #d32936;
-  --color-nintendo: #e60012;
-  --color-playstation: #003791;
-  --color-other: #64748b;
+  --color-epic: #4b4b4b;
+  --color-gog: #c282e3;
+  --color-origin: #ff7d45;
+  --color-ubisoft: #338cff;
+  --color-battlenet: #33beff;
+  --color-xbox: #1fa31f;
+  --color-windows: #1faeff;
+  --color-riot: #e53e4c;
+  --color-nintendo: #ff1a2d;
+  --color-playstation: #004fc4;
+  --color-other: #78889b;
 
-  /* Spacing */
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
+  /* Spacing (Larger for more breathing room) */
+  --space-xs: 6px;
+  --space-sm: 12px;
+  --space-md: 20px;
+  --space-lg: 32px;
+  --space-xl: 44px;
+  --space-2xl: 64px;
 
   /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
   --radius-full: 9999px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px var(--accent-primary-glow);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 25px var(--accent-primary-glow);
 
   /* Transitions */
   --transition-fast: 150ms ease;
@@ -87,7 +87,7 @@
 }
 
 html {
-  font-size: 14px;
+  font-size: 18px; /* In-your-face scaling */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -96,15 +96,15 @@ body {
   font-family: var(--font-sans);
   background: var(--bg-primary);
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: 1.5;
   min-height: 100vh;
   overflow-x: hidden;
 }
 
 /* ── Scrollbar ──────────────────────────────────────────────────────── */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: var(--bg-secondary);
@@ -120,8 +120,8 @@ body {
 /* ── Layout ─────────────────────────────────────────────────────────── */
 .app {
   display: grid;
-  grid-template-columns: 240px 1fr;
-  grid-template-rows: 56px 1fr;
+  grid-template-columns: 280px 1fr; /* Wider sidebar */
+  grid-template-rows: 64px 1fr; /* Taller topbar */
   min-height: 100vh;
 }
 
@@ -250,17 +250,17 @@ body {
 }
 
 .card-title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font-size: 1.05rem;
+  font-weight: 750;
+  color: var(--text-primary);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
 
 /* ── Stat Cards ─────────────────────────────────────────────────────── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: var(--space-md);
   margin-bottom: var(--space-lg);
 }
@@ -272,6 +272,7 @@ body {
   padding: var(--space-lg);
   position: relative;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
 
 .stat-card::before {
@@ -280,29 +281,30 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 3px;
   background: var(--stat-accent, var(--accent-primary));
 }
 
 .stat-label {
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent-primary-light);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   margin-bottom: var(--space-xs);
 }
 
 .stat-value {
-  font-size: 1.8rem;
-  font-weight: 700;
+  font-size: 2.6rem;
+  font-weight: 800;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 
 .stat-sub {
-  font-size: 0.8rem;
+  font-size: 0.9rem;
+  font-weight: 500;
   color: var(--text-secondary);
   margin-top: var(--space-xs);
 }
@@ -319,23 +321,24 @@ table {
 
 thead th {
   text-align: left;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid var(--border-subtle);
+  letter-spacing: 0.08em;
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 2px solid var(--border-medium);
   position: sticky;
   top: 0;
   background: var(--bg-card);
 }
 
 tbody td {
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-md) var(--space-lg);
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 0.9rem;
+  font-size: 1rem;
   color: var(--text-secondary);
+  font-weight: 500;
 }
 
 tbody tr {

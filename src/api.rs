@@ -82,31 +82,57 @@ async fn downloads(
 // ── Setup Wizard ─────────────────────────────────────────────────────
 
 async fn setup_check(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let checks = crate::setup_wizard::run_checks(&state.config).await;
+    let config = state.config.read().await;
+    let checks = crate::setup_wizard::run_checks(&config).await;
     Json(serde_json::json!({ "checks": checks }))
 }
 
 // ── Config ───────────────────────────────────────────────────────────
 
 async fn get_config(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+    let config = state.config.read().await;
     Json(serde_json::json!({
-        "lancache_logs_dir": state.config.lancache_logs_dir,
-        "lancache_cache_dir": state.config.lancache_cache_dir,
-        "cache_scan_interval_secs": state.config.cache_scan_interval_secs,
-        "log_retention_days": state.config.log_retention_days,
-        "excluded_ips": state.config.excluded_ips,
-        "steam_api_key_set": state.config.steam_api_key.is_some(),
-        "db_path": state.config.db_path,
+        "lancache_logs_dir": config.lancache_logs_dir,
+        "lancache_cache_dir": config.lancache_cache_dir,
+        "cache_scan_interval_secs": config.cache_scan_interval_secs,
+        "log_retention_days": config.log_retention_days,
+        "excluded_ips": config.excluded_ips,
+        "steam_api_key_set": config.steam_api_key.is_some(),
+        "db_path": config.db_path,
     }))
+}
+
+#[derive(Deserialize)]
+struct UpdateConfigInput {
+    steam_api_key: Option<String>,
+    cache_scan_interval_secs: u64,
+    log_retention_days: u32,
+    db_path: String,
+    excluded_ips: Vec<String>,
 }
 
 async fn update_config(
     State(state): State<Arc<AppState>>,
-    Json(_body): Json<serde_json::Value>,
+    Json(body): Json<UpdateConfigInput>,
 ) -> impl IntoResponse {
-    // Persist updated settings to config.json
-    // Note: For a full implementation, we'd update state.config in-place via RwLock
-    if let Err(e) = state.config.save_persisted() {
+    let mut config = state.config.write().await;
+    
+    // If the Steam API key is sent and isn't just the mask (••••••••) or empty, update it.
+    if let Some(key) = body.steam_api_key {
+        let trimmed_key = key.trim();
+        if !trimmed_key.is_empty() && !trimmed_key.chars().all(|c| c == '•') {
+            config.steam_api_key = Some(trimmed_key.to_string());
+        } else if trimmed_key.is_empty() {
+            config.steam_api_key = None;
+        }
+    }
+    
+    config.cache_scan_interval_secs = body.cache_scan_interval_secs;
+    config.log_retention_days = body.log_retention_days;
+    config.db_path = body.db_path;
+    config.excluded_ips = body.excluded_ips;
+
+    if let Err(e) = config.save_persisted() {
         return (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": e.to_string()})),
@@ -120,7 +146,11 @@ async fn update_config(
 // ── Prefill ──────────────────────────────────────────────────────────
 
 async fn prefill_status(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let manager = crate::prefill::PrefillManager::new(&state.config.lancache_cache_dir);
+    let cache_dir = {
+        let config = state.config.read().await;
+        config.lancache_cache_dir.clone()
+    };
+    let manager = crate::prefill::PrefillManager::new(&cache_dir);
     let statuses = manager.get_status().await;
     Json(serde_json::json!({ "platforms": statuses }))
 }
@@ -129,7 +159,11 @@ async fn prefill_run(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(platform): axum::extract::Path<String>,
 ) -> impl IntoResponse {
-    let manager = crate::prefill::PrefillManager::new(&state.config.lancache_cache_dir);
+    let cache_dir = {
+        let config = state.config.read().await;
+        config.lancache_cache_dir.clone()
+    };
+    let manager = crate::prefill::PrefillManager::new(&cache_dir);
 
     match manager.run_prefill(&platform).await {
         Ok(output) => Json(serde_json::json!({

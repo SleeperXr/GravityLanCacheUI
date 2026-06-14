@@ -60,7 +60,7 @@ use db::Database;
 /// Shared application state accessible by all handlers.
 pub struct AppState {
     pub db: Database,
-    pub config: AppConfig,
+    pub config: tokio::sync::RwLock<AppConfig>,
     pub tx_broadcast: tokio::sync::broadcast::Sender<String>,
 }
 
@@ -89,7 +89,7 @@ async fn main() {
 
     let state = std::sync::Arc::new(AppState {
         db,
-        config: config.clone(),
+        config: tokio::sync::RwLock::new(config.clone()),
         tx_broadcast: tx_broadcast.clone(),
     });
 
