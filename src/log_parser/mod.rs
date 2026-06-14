@@ -228,12 +228,26 @@ async fn process_log_file(
     let mut file_len = file.metadata()?.len() as i64;
 
     // If file is smaller than last offset, it was rotated — restart from beginning
-    let start_offset = if file_len < parse_state.last_offset {
+    let mut start_offset = if file_len < parse_state.last_offset {
         tracing::info!("Log file rotated (size {} < offset {}), restarting", file_len, parse_state.last_offset);
         0
     } else {
         parse_state.last_offset
     };
+
+    // Cap the initial scan size to avoid hanging on massive files.
+    // If we are starting from 0 (first run or reset) and the file is larger than 250 MB,
+    // skip to the last 200 MB of the log to compile recent history quickly.
+    const MAX_INITIAL_SCAN_BYTES: i64 = 200_000_000; // 200 MB
+    if start_offset == 0 && file_len > (MAX_INITIAL_SCAN_BYTES + 50_000_000) {
+        let skip_to = file_len - MAX_INITIAL_SCAN_BYTES;
+        tracing::info!(
+            "Log file is extremely large ({:.2} GB). Skipping to last {} MB to parse recent history quickly.",
+            file_len as f64 / 1_000_000_000.0,
+            MAX_INITIAL_SCAN_BYTES / 1_000_000
+        );
+        start_offset = skip_to;
+    }
 
     let mut reader = BufReader::new(file);
     reader.seek(SeekFrom::Start(start_offset as u64))?;

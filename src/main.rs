@@ -85,6 +85,10 @@ async fn main() {
         .expect("Failed to run database migrations");
     tracing::info!("Database initialized at {}", config.db_path);
 
+    if let Ok(count) = db.get_game_mappings_count().await {
+        tracing::info!("Loaded {} game mappings from database", count);
+    }
+
     let (tx_broadcast, _) = tokio::sync::broadcast::channel::<String>(256);
 
     let state = std::sync::Arc::new(AppState {

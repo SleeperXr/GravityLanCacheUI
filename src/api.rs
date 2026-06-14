@@ -115,6 +115,7 @@ async fn setup_check(State(state): State<Arc<AppState>>) -> Json<serde_json::Val
 
 async fn get_config(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let config = state.config.read().await;
+    let mappings_count = state.db.get_game_mappings_count().await.unwrap_or(0);
     Json(serde_json::json!({
         "lancache_logs_dir": config.lancache_logs_dir,
         "lancache_cache_dir": config.lancache_cache_dir,
@@ -123,6 +124,7 @@ async fn get_config(State(state): State<Arc<AppState>>) -> Json<serde_json::Valu
         "excluded_ips": config.excluded_ips,
         "steam_api_key_set": config.steam_api_key.is_some(),
         "db_path": config.db_path,
+        "steam_mappings_count": mappings_count,
     }))
 }
 

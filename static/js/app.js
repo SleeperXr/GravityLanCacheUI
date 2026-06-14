@@ -698,6 +698,9 @@ async function renderSettings(container) {
       <div style="display:flex;gap:20px;flex-wrap:wrap">
         <div style="flex:1;min-width:280px">
           <button class="btn btn-primary" id="btn-update-mappings" style="background:#0284c7;width:100%;justify-content:center">🔄 Update Steam Depot Mappings</button>
+          <div style="margin-top:8px;font-size:0.8rem;color:var(--text-secondary);font-weight:700">
+            Status: <span style="color:${config.steam_mappings_count > 0 ? 'var(--color-hit)' : 'var(--color-error)'}">${config.steam_mappings_count ? config.steam_mappings_count.toLocaleString() : '0'}</span> Mappings loaded
+          </div>
           <p style="color:var(--text-muted);font-size:0.75rem;margin-top:8px">
             Downloads and updates the local Steam Depot mapping database (~7.8 MB CSV file) from GitHub to resolve depot IDs into game names.
           </p>
