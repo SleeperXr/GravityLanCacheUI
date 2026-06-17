@@ -53,10 +53,7 @@ impl PrefillManager {
         ]
     }
 
-    async fn platform_status(&self, platform: &str, binary_name: &str) -> PrefillStatus {
-        let binary_path = format!("{}/{}/{}", self.data_dir, binary_name, binary_name);
-        let _exists = std::path::Path::new(&binary_path).exists();
-
+    async fn platform_status(&self, platform: &str, _binary_name: &str) -> PrefillStatus {
         PrefillStatus {
             platform: platform.to_string(),
             running: false,

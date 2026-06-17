@@ -266,6 +266,11 @@ async fn process_log_file(
     let mut active_downloads = HashMap::<(String, String, Option<String>), ActiveDownload>::new();
     let mut hourly_stats = HashMap::<(String, String), HourlyStats>::new();
 
+    let mut excluded_ips = {
+        let config = state.config.read().await;
+        config.excluded_ips.clone()
+    };
+
     loop {
         line_buf.clear();
         let bytes_read = reader.read_line(&mut line_buf)?;
@@ -274,12 +279,15 @@ async fn process_log_file(
             // Flush remaining aggregates to DB before sleeping
             flush_to_db(&mut active_downloads, &mut hourly_stats, state).await?;
 
-            // Only write state and broadcast if we actually processed lines since the last idle check
-            if lines_processed > 0 {
+            // Save state and broadcast progress if the offset has advanced (even if all lines were skipped)
+            if current_offset > parse_state.last_offset {
                 parse_state.last_offset = current_offset;
                 state.db.save_parse_state(&parse_state).await?;
-                tracing::info!("Processed {} lines, offset at {}", lines_processed, current_offset);
-                lines_processed = 0;
+
+                if lines_processed > 0 {
+                    tracing::info!("Processed {} lines, offset at {}", lines_processed, current_offset);
+                    lines_processed = 0;
+                }
 
                 // Broadcast that parser is caught up
                 if let Ok(json) = serde_json::to_string(&serde_json::json!({
@@ -295,14 +303,20 @@ async fn process_log_file(
 
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
+            // Reload config parameters when idling
+            {
+                let config = state.config.read().await;
+                excluded_ips = config.excluded_ips.clone();
+            }
+
             // Check if offset was reset in database
             if let Ok(db_state) = state.db.get_parse_state().await {
-                if db_state.last_offset < current_offset {
+                if db_state.last_offset < parse_state.last_offset {
                     // Flush before returning so we don't lose anything in-memory
                     flush_to_db(&mut active_downloads, &mut hourly_stats, state).await?;
                     tracing::info!(
                         "Log parser offset reset detected in DB (current={} > DB={}). Rewinding parser...",
-                        current_offset,
+                        parse_state.last_offset,
                         db_state.last_offset
                     );
                     return Ok(()); // returns to run_log_parser, which will reload offset from DB
@@ -343,10 +357,7 @@ async fn process_log_file(
             }
 
             // Skip excluded IPs based on parsed client IP
-            let is_excluded = {
-                let config = state.config.read().await;
-                config.excluded_ips.iter().any(|ip| entry.client_ip == *ip || entry.client_ip.starts_with(ip))
-            };
+            let is_excluded = excluded_ips.iter().any(|ip| entry.client_ip == *ip || entry.client_ip.starts_with(ip));
             if is_excluded {
                 continue;
             }
@@ -545,6 +556,12 @@ async fn process_log_file(
                 "is_catching_up": is_catching_up,
             })) {
                 let _ = state.tx_broadcast.send(json);
+            }
+
+            // Reload config parameters periodically
+            {
+                let config = state.config.read().await;
+                excluded_ips = config.excluded_ips.clone();
             }
         }
     }

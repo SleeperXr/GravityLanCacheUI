@@ -478,21 +478,31 @@ impl Database {
         let stats = self
             .conn
             .call(|conn| {
-                let total_bytes: i64 = conn
-                    .query_row("SELECT COALESCE(SUM(total_bytes),0) FROM download_events", [], |r| r.get(0))
-                    .unwrap_or(0);
-                let hit_bytes: i64 = conn
-                    .query_row("SELECT COALESCE(SUM(hit_bytes),0) FROM download_events", [], |r| r.get(0))
-                    .unwrap_or(0);
-                let miss_bytes: i64 = conn
-                    .query_row("SELECT COALESCE(SUM(miss_bytes),0) FROM download_events", [], |r| r.get(0))
-                    .unwrap_or(0);
-                let total_downloads: i64 = conn
-                    .query_row("SELECT COUNT(*) FROM download_events", [], |r| r.get(0))
-                    .unwrap_or(0);
-                let unique_clients: i64 = conn
-                    .query_row("SELECT COUNT(DISTINCT client_ip) FROM download_events", [], |r| r.get(0))
-                    .unwrap_or(0);
+                let row = conn.query_row(
+                    "SELECT 
+                        COALESCE(SUM(total_bytes), 0),
+                        COALESCE(SUM(hit_bytes), 0),
+                        COALESCE(SUM(miss_bytes), 0),
+                        COUNT(*),
+                        COUNT(DISTINCT client_ip)
+                     FROM download_events",
+                    [],
+                    |r| {
+                        Ok((
+                            r.get::<_, i64>(0)?,
+                            r.get::<_, i64>(1)?,
+                            r.get::<_, i64>(2)?,
+                            r.get::<_, i64>(3)?,
+                            r.get::<_, i64>(4)?,
+                        ))
+                    },
+                ).unwrap_or((0, 0, 0, 0, 0));
+
+                let total_bytes = row.0;
+                let hit_bytes = row.1;
+                let miss_bytes = row.2;
+                let total_downloads = row.3;
+                let unique_clients = row.4;
 
                 let hit_rate = if total_bytes > 0 {
                     (hit_bytes as f64 / total_bytes as f64) * 100.0
@@ -652,3 +662,58 @@ CREATE TABLE IF NOT EXISTS cache_snapshots (
     details_json TEXT
 );
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_dashboard_stats() {
+        let db = Database::new(":memory:").await.unwrap();
+        db.run_migrations().await.unwrap();
+
+        let event1 = DownloadEvent {
+            id: 0,
+            client_ip: "192.168.1.50".to_string(),
+            service: "steam".to_string(),
+            download_id: Some("100".to_string()),
+            game_name: Some("Test Game".to_string()),
+            started_at: "2026-06-17T12:00:00".to_string(),
+            ended_at: "2026-06-17T12:05:00".to_string(),
+            total_bytes: 1000,
+            hit_bytes: 800,
+            miss_bytes: 200,
+            request_count: 5,
+            hit_rate: 80.0,
+            app_id: None,
+        };
+
+        let event2 = DownloadEvent {
+            id: 0,
+            client_ip: "192.168.1.60".to_string(),
+            service: "steam".to_string(),
+            download_id: Some("200".to_string()),
+            game_name: Some("Test Game 2".to_string()),
+            started_at: "2026-06-17T12:10:00".to_string(),
+            ended_at: "2026-06-17T12:15:00".to_string(),
+            total_bytes: 2000,
+            hit_bytes: 2000,
+            miss_bytes: 0,
+            request_count: 10,
+            hit_rate: 100.0,
+            app_id: None,
+        };
+
+        db.insert_download_event(&event1).await.unwrap();
+        db.insert_download_event(&event2).await.unwrap();
+
+        let stats = db.get_dashboard_stats().await.unwrap();
+        assert_eq!(stats.total_bytes, 3000);
+        assert_eq!(stats.hit_bytes, 2800);
+        assert_eq!(stats.miss_bytes, 200);
+        assert_eq!(stats.bandwidth_saved, 2800);
+        assert_eq!(stats.total_downloads, 2);
+        assert_eq!(stats.unique_clients, 2);
+        assert!((stats.hit_rate - 93.33333333333333).abs() < 0.001);
+    }
+}

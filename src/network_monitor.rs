@@ -8,9 +8,23 @@ pub async fn run_network_monitor(state: Arc<AppState>) {
 
     let mut networks = Networks::new_with_refreshed_list();
 
+    let mut was_idle = true;
+
     loop {
-        // Sleep for 1 second to calculate bytes per second
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        // Skip network polling if no clients are listening
+        if state.tx_broadcast.receiver_count() == 0 {
+            was_idle = true;
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            continue;
+        }
+
+        // If transitioning from idle, refresh once to establish a baseline
+        // so that the first report doesn't contain a huge delta/spike.
+        if was_idle {
+            networks.refresh();
+            was_idle = false;
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
 
         networks.refresh();
 
@@ -38,5 +52,8 @@ pub async fn run_network_monitor(state: Arc<AppState>) {
         })) {
             let _ = state.tx_broadcast.send(json);
         }
+
+        // Sleep for 1 second to calculate bytes per second
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 }

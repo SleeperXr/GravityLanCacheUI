@@ -27,12 +27,22 @@ function timeAgo(dateStr) {
 }
 
 function serviceBadge(service) {
-  const cls = 'badge badge-service badge-' + (service || 'other');
-  return `<span class="${cls}">${service || 'other'}</span>`;
+  const cls = 'badge badge-service badge-' + (escapeHtml(service) || 'other');
+  return `<span class="${cls}">${escapeHtml(service) || 'other'}</span>`;
+}
+
+function escapeHtml(text) {
+  if (text === null || text === undefined) return '';
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function hitRateBadge(rate) {
-  const cls = rate >= 90 ? 'badge-hit' : rate >= 50 ? 'badge-miss' : 'badge-miss';
+  const cls = rate >= 90 ? 'badge-hit' : rate >= 10 ? 'badge-warning' : 'badge-error';
   return `<span class="badge ${cls}">${formatPercent(rate)}</span>`;
 }
 
@@ -50,11 +60,11 @@ function hitRateBar(hitBytes, missBytes) {
 function getGameArtHtml(service, gameName, appId, downloadId) {
   let innerHtml = '';
   let borderAccent = 'rgba(255,255,255,0.05)';
-  const displayLabel = service ? service.toUpperCase() : 'GAME';
+  const displayLabel = service ? escapeHtml(service.toUpperCase()) : 'GAME';
   
   if (service === 'steam' && appId) {
     innerHtml = `<img src="https://cdn.akamai.steamstatic.com/steam/apps/${appId}/capsule_184x69.jpg" 
-                      alt="${gameName || 'Steam'}" 
+                      alt="${escapeHtml(gameName) || 'Steam'}" 
                       style="width:100%;height:100%;object-fit:cover;border-radius:4px"
                       onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                  <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;color:#818cf8;background:rgba(99,102,241,0.1)">STEAM</div>`;
@@ -83,27 +93,50 @@ function getGameArtHtml(service, gameName, appId, downloadId) {
 
 const API = {
   async get(endpoint) {
-    const res = await fetch('/api/v1' + endpoint);
+    const headers = {};
+    const apiKey = localStorage.getItem('gravity_api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+
+    const res = await fetch('/api/v1' + endpoint, { headers });
+    if (res.status === 401) { handleUnauthorized(); throw new Error('Unauthorized'); }
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json();
   },
 
   async put(endpoint, data) {
+    const headers = { 'Content-Type': 'application/json' };
+    const apiKey = localStorage.getItem('gravity_api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+
     const res = await fetch('/api/v1' + endpoint, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(data),
     });
+    if (res.status === 401) { handleUnauthorized(); throw new Error('Unauthorized'); }
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json();
   },
 
   async post(endpoint) {
-    const res = await fetch('/api/v1' + endpoint, { method: 'POST' });
+    const headers = {};
+    const apiKey = localStorage.getItem('gravity_api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+
+    const res = await fetch('/api/v1' + endpoint, { method: 'POST', headers });
+    if (res.status === 401) { handleUnauthorized(); throw new Error('Unauthorized'); }
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json();
   },
 };
+
+function handleUnauthorized() {
+  const key = prompt('GravityLancacheUI is protected by an API Key. Please enter the API Key:');
+  if (key) {
+    localStorage.setItem('gravity_api_key', key.trim());
+    location.reload();
+  }
+}
 
 // ── WebSocket Manager ────────────────────────────────────────────────
 
@@ -382,18 +415,18 @@ function renderDownloadsTable(containerId, downloads) {
       <tbody>
         ${downloads.map(d => `
           <tr>
-            <td title="${d.ended_at}">${timeAgo(d.ended_at)}</td>
+            <td title="${escapeHtml(d.ended_at)}">${timeAgo(d.ended_at)}</td>
             <td>${serviceBadge(d.service)}</td>
             <td>
               <div style="display:flex;align-items:center;gap:12px">
                 ${getGameArtHtml(d.service, d.game_name, d.app_id, d.download_id)}
                 <div style="display:flex;flex-direction:column;gap:1px;align-items:flex-start">
-                  <span style="font-weight:700;color:var(--text-primary);font-size:0.95rem;text-align:left">${d.game_name || d.download_id || '—'}</span>
-                  ${d.game_name ? `<span style="font-size:0.75rem;color:var(--text-muted);font-family:var(--font-mono)">ID: ${d.download_id || '—'}</span>` : ''}
+                  <span style="font-weight:700;color:var(--text-primary);font-size:0.95rem;text-align:left">${escapeHtml(d.game_name || d.download_id || '—')}</span>
+                  ${d.game_name ? `<span style="font-size:0.75rem;color:var(--text-muted);font-family:var(--font-mono)">ID: ${escapeHtml(d.download_id || '—')}</span>` : ''}
                 </div>
               </div>
             </td>
-            <td style="font-family:var(--font-mono);font-size:0.8rem">${d.client_ip}</td>
+            <td style="font-family:var(--font-mono);font-size:0.8rem">${escapeHtml(d.client_ip)}</td>
             <td>${formatBytes(d.total_bytes)}</td>
             <td>${hitRateBadge(d.hit_rate)}</td>
           </tr>
@@ -533,7 +566,7 @@ async function loadCacheData() {
                       <div style="display:flex;align-items:center;gap:12px">
                         ${getGameArtHtml(g.service, g.name, g.app_id, null)}
                         <div style="display:flex;flex-direction:column;gap:1px;align-items:flex-start">
-                          <span style="font-weight:700;color:var(--text-primary);font-size:0.95rem;text-align:left">${g.name}</span>
+                          <span style="font-weight:700;color:var(--text-primary);font-size:0.95rem;text-align:left">${escapeHtml(g.name)}</span>
                         </div>
                       </div>
                     </td>
@@ -599,7 +632,7 @@ async function renderClients(container) {
           ${clients.map(c => {
             const hitRate = c.totalBytes > 0 ? (c.hitBytes / c.totalBytes) * 100 : 0;
             return `<tr>
-              <td style="font-family:var(--font-mono)">${c.ip}</td>
+              <td style="font-family:var(--font-mono)">${escapeHtml(c.ip)}</td>
               <td>${formatBytes(c.totalBytes)}</td>
               <td>${c.count}</td>
               <td>${hitRateBadge(hitRate)}</td>
@@ -678,7 +711,7 @@ async function renderSettings(container) {
 
   container.innerHTML = `
     <div class="card" style="margin-bottom:var(--space-md)">
-      <div class="card-header"><div class="card-title">API Keys</div></div>
+      <div class="card-header"><div class="card-title">API Keys & Access</div></div>
       <div style="margin-bottom:16px">
         <label style="display:block;color:var(--text-secondary);font-size:0.85rem;margin-bottom:6px">Steam Web API Key</label>
         <input class="input" id="setting-steam-key" type="password"
@@ -686,6 +719,15 @@ async function renderSettings(container) {
           value="${config.steam_api_key_set ? '••••••••••••••••' : ''}">
         <p style="color:var(--text-muted);font-size:0.75rem;margin-top:4px">
           Get one at <a href="https://steamcommunity.com/dev/apikey" target="_blank" style="color:var(--accent-primary-light)">steamcommunity.com/dev/apikey</a>
+        </p>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;color:var(--text-secondary);font-size:0.85rem;margin-bottom:6px">GravityUI API Access Key</label>
+        <input class="input" id="setting-gravity-key" type="password"
+          placeholder="Enter API Key if configured via environment variable..."
+          value="${escapeHtml(localStorage.getItem('gravity_api_key') || '')}">
+        <p style="color:var(--text-muted);font-size:0.75rem;margin-top:4px">
+          Must match the <code>API_KEY</code> environment variable configured in your container.
         </p>
       </div>
     </div>
@@ -824,6 +866,7 @@ async function saveSettings() {
   btn.textContent = '⏳ Saving...';
   try {
     const steam_api_key = document.getElementById('setting-steam-key').value;
+    const gravity_key = document.getElementById('setting-gravity-key').value.trim();
     const cache_scan_interval_secs = parseInt(document.getElementById('setting-scan-interval').value, 10) || 0;
     const db_path = document.getElementById('setting-db-path').value.trim();
     const log_retention_days = parseInt(document.getElementById('setting-retention').value, 10) || 90;
@@ -842,6 +885,13 @@ async function saveSettings() {
       log_scan_days,
       excluded_ips,
     });
+
+    if (gravity_key) {
+      localStorage.setItem('gravity_api_key', gravity_key);
+    } else {
+      localStorage.removeItem('gravity_api_key');
+    }
+
     btn.textContent = '✅ Saved!';
   } catch (e) {
     btn.textContent = '❌ Error';
@@ -897,7 +947,7 @@ function populateLiveFeed(downloads) {
     return `<div style="padding:10px 0;border-bottom:1px solid var(--border-subtle);font-size:0.85rem;display:flex;justify-content:space-between;align-items:center">
       <div style="display:flex;align-items:center;gap:8px">
         ${serviceBadge(d.service)}
-        <span style="color:var(--text-secondary);font-family:var(--font-mono)">${d.client_ip}</span>
+        <span style="color:var(--text-secondary);font-family:var(--font-mono)">${escapeHtml(d.client_ip)}</span>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end">
         <span style="font-weight:700;color:var(--text-primary)">${formatBytes(d.total_bytes)}</span>
@@ -907,11 +957,26 @@ function populateLiveFeed(downloads) {
   }).join('');
 }
 
+let dashboardReloadTimeout = null;
+function throttledLoadDashboard() {
+  if (dashboardReloadTimeout) return;
+  if (currentPage === 'dashboard') {
+    loadDashboardData();
+  }
+  dashboardReloadTimeout = setTimeout(() => {
+    dashboardReloadTimeout = null;
+  }, 2000);
+}
+
 function setupLiveFeed() {
   ws.on((data) => {
-    // Update dashboard stats on any event
+    // Update dashboard stats on specific events
     if (currentPage === 'dashboard') {
-      loadDashboardData();
+      if (data.type === 'initial_state') {
+        loadDashboardData();
+      } else if (data.type === 'new_download') {
+        throttledLoadDashboard();
+      }
     }
 
     // Add to live feed if on dashboard
@@ -928,7 +993,7 @@ function setupLiveFeed() {
       item.innerHTML = `
         <div style="display:flex;align-items:center;gap:8px">
           ${serviceBadge(data.service)}
-          <span style="color:var(--text-secondary);font-family:var(--font-mono)">${data.client_ip}</span>
+          <span style="color:var(--text-secondary);font-family:var(--font-mono)">${escapeHtml(data.client_ip)}</span>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end">
           <span style="font-weight:700;color:var(--text-primary)">${formatBytes(data.bytes)}</span>
@@ -1162,15 +1227,6 @@ async function renderLogs(container) {
     }
   }
 
-  function escapeHtml(text) {
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
   fetchLogs();
   logsInterval = setInterval(fetchLogs, 3000);
 
@@ -1213,6 +1269,29 @@ async function renderLogs(container) {
 // ── Init ─────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Mobile menu toggle
+  const menuToggle = document.getElementById('mobile-menu-toggle');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+
+  if (menuToggle && sidebar && overlay) {
+    const toggleMenu = () => {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('active');
+    };
+    menuToggle.addEventListener('click', toggleMenu);
+    overlay.addEventListener('click', toggleMenu);
+    
+    // Auto-close sidebar on menu link click (mobile)
+    document.querySelectorAll('.nav-item').forEach(el => {
+      el.addEventListener('click', () => {
+        if (sidebar.classList.contains('open')) {
+          toggleMenu();
+        }
+      });
+    });
+  }
+
   // Navigation
   document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', () => navigate(el.dataset.page));

@@ -368,8 +368,18 @@ tbody tr:hover {
 }
 
 .badge-miss {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.badge-warning {
   background: var(--color-miss-bg);
   color: var(--color-miss);
+}
+
+.badge-error {
+  background: var(--color-error-bg);
+  color: var(--color-error);
 }
 
 .badge-service {
@@ -514,8 +524,9 @@ tbody tr:hover {
   position: fixed;
   inset: 0;
   background: rgba(10, 14, 23, 0.95);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   z-index: 1000;
@@ -633,7 +644,7 @@ tbody tr:hover {
 
 /* ── Parser Progress Bar ────────────────────────────────────────────── */
 .parser-progress-container {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 12px;
   background: rgba(99, 102, 241, 0.08);
@@ -721,3 +732,149 @@ tbody tr:hover {
     display: none !important;
   }
 }
+
+/* ── Migrated Inline Styles ─────────────────────────────────────────── */
+.logo-version {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.nav-section-bottom {
+  margin-top: auto;
+}
+
+.sidebar-version {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  opacity: 0.5;
+  text-align: center;
+  padding: 12px 16px 0;
+  font-family: var(--font-mono);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+#page-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+#ws-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.wizard-card p {
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+.wizard-actions {
+  margin-top: 24px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+/* ── Mobile Menu Toggle Button ──────────────────────────────────────── */
+.mobile-menu-toggle {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.mobile-menu-toggle:hover {
+  background: var(--bg-card);
+  border-color: var(--accent-primary);
+}
+
+/* ── Mobile Responsive Design ───────────────────────────────────────── */
+@media (max-width: 768px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: 64px 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    left: -280px;
+    top: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 100;
+    box-shadow: var(--shadow-lg);
+    transition: left var(--transition-normal);
+  }
+
+  .sidebar.open {
+    left: 0;
+  }
+
+  /* Overlay to close sidebar when clicking outside */
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 90;
+    backdrop-filter: blur(2px);
+    display: none;
+  }
+
+  .sidebar-overlay.active {
+    display: block;
+  }
+
+  .mobile-menu-toggle {
+    display: flex;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: var(--space-md);
+  }
+
+  .grid-2, .grid-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .topbar {
+    padding: 0 var(--space-md);
+  }
+
+  .main-content {
+    padding: var(--space-md);
+  }
+
+  .wizard-card {
+    padding: var(--space-lg);
+  }
+}
+

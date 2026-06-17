@@ -1,9 +1,12 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="GravityLancacheUI — Modern LanCache Monitoring Dashboard">
+  <meta property="og:title" content="GravityLancacheUI">
+  <meta property="og:description" content="GravityLancacheUI — Modern LanCache Monitoring Dashboard">
+  <meta property="og:type" content="website">
   <title>GravityLancacheUI</title>
   <link rel="stylesheet" href="/css/index.css">
   <style>
@@ -12,12 +15,13 @@
   </style>
 </head>
 <body>
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
   <div class="app" id="app">
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
       <a href="#/" class="logo">
         <div class="logo-icon">🚀</div>
-        <div class="logo-text">Gravity<span>Cache</span> <span style="font-size: 0.6rem; font-weight: 700; color: var(--text-muted); background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono); vertical-align: middle; margin-left: 4px;">v0.1</span></div>
+        <div class="logo-text">Gravity<span>Cache</span> <span class="logo-version">v0.1</span></div>
       </a>
 
       <nav>
@@ -47,23 +51,24 @@
           </button>
         </div>
 
-        <div class="nav-section" style="margin-top:auto">
+        <div class="nav-section nav-section-bottom">
           <button class="nav-item" data-page="settings" id="nav-settings">
             <span class="icon">⚙️</span> Settings
           </button>
-          <div style="font-size:0.6rem;color:var(--text-muted);opacity:0.5;text-align:center;padding:12px 16px 0;font-family:var(--font-mono)">v0.1.0</div>
+          <div class="sidebar-version">v0.1.0</div>
         </div>
       </nav>
     </aside>
 
     <!-- Top Bar -->
     <header class="topbar" id="topbar">
-      <div style="display:flex;align-items:center;gap:12px">
-        <h1 style="font-size:1.1rem;font-weight:600" id="page-title">Dashboard</h1>
+      <div class="topbar-left">
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle Menu">☰</button>
+        <h1 id="page-title">Dashboard</h1>
       </div>
 
       <!-- Scanning Progress Banner (dynamisch gesteuert) -->
-      <div id="parser-progress-container" class="parser-progress-container" style="display:none">
+      <div id="parser-progress-container" class="parser-progress-container">
         <span id="parser-progress-label" class="parser-progress-label">⚡ SCANNING...</span>
         <div id="parser-progress-bar-wrapper" class="parser-progress-bar-wrapper">
           <div id="parser-progress-bar" class="parser-progress-bar"></div>
@@ -71,8 +76,8 @@
         <span id="parser-progress-text" class="parser-progress-text">0.0%</span>
       </div>
 
-      <div style="display:flex;align-items:center;gap:16px">
-        <span id="ws-status" style="display:flex;align-items:center;gap:6px;font-size:0.8rem;color:var(--text-muted)">
+      <div class="topbar-right">
+        <span id="ws-status">
           <span class="live-dot"></span> Live
         </span>
       </div>
@@ -85,14 +90,14 @@
   </div>
 
   <!-- Setup Wizard (shown on first run if checks fail) -->
-  <div class="wizard-overlay" id="setup-wizard" style="display:none">
+  <div class="wizard-overlay" id="setup-wizard">
     <div class="wizard-card">
       <h2 class="wizard-title">🔧 Setup Wizard</h2>
-      <p style="color:var(--text-secondary);margin-bottom:24px">
+      <p>
         Checking your LanCache configuration...
       </p>
       <div id="wizard-checks"></div>
-      <div style="margin-top:24px;display:flex;gap:12px;justify-content:flex-end">
+      <div class="wizard-actions">
         <button class="btn btn-ghost" id="wizard-skip">Skip</button>
         <button class="btn btn-primary" id="wizard-recheck">Re-check</button>
       </div>

@@ -118,7 +118,13 @@ class UXAuditor:
 
         # --- 1. PSYCHOLOGY LAWS ---
         # Hick's Law
-        nav_items = len(re.findall(r'<NavLink|<Link|<a\s+href|nav-item', content, re.IGNORECASE))
+        # Strip logo links first to avoid counting them as menu options
+        hicks_content = re.sub(r'<a\s+[^>]*class=["\']logo["\'][^>]*href[^>]*>[\s\S]*?</a>', '', content, flags=re.IGNORECASE)
+        hicks_content = re.sub(r'<a\s+[^>]*href[^>]*class=["\']logo["\'][^>]*>[\s\S]*?</a>', '', hicks_content, flags=re.IGNORECASE)
+        nav_items = (
+            len(re.findall(r'<NavLink\b|<Link\b', hicks_content)) +
+            len(re.findall(r'<a\s+href|\bnav-item\b', hicks_content, re.IGNORECASE))
+        )
         if nav_items > 7:
             self.issues.append(f"[Hick's Law] {filename}: {nav_items} nav items (Max 7)")
         
@@ -208,7 +214,7 @@ class UXAuditor:
             self.warnings.append(f"[Cognitive Load] {filename}: High visual noise detected. Many colors and borders increase cognitive load.")
 
         # Familiar patterns
-        if has_form:
+        if form_fields > 0:
             has_standard_labels = bool(re.search(r'<label|placeholder|aria-label', content, re.IGNORECASE))
             if not has_standard_labels:
                 self.issues.append(f"[Cognitive Load] {filename}: Form inputs without labels. Use <label> for accessibility and clarity.")

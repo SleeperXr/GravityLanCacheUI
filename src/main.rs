@@ -121,10 +121,24 @@ async fn main() {
         network_monitor::run_network_monitor(net_state).await;
     });
 
+    let cors = CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+        ])
+        .allow_headers([
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::AUTHORIZATION,
+            axum::http::header::HeaderName::from_static("x-api-key"),
+        ]);
+
     let app = Router::new()
-        .nest("/api/v1", api::routes())
+        .nest("/api/v1", api::routes(state.clone()))
         .fallback_service(ServeDir::new("static").append_index_html_on_directories(true))
-        .layer(CorsLayer::permissive())
+        .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

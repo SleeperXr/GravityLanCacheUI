@@ -13,6 +13,7 @@ pub struct AppConfig {
     pub listen_port: u16,
     pub excluded_ips: Vec<String>,
     pub config_file_path: String,
+    pub api_key: Option<String>,
 }
 
 impl AppConfig {
@@ -52,6 +53,10 @@ impl AppConfig {
                 .map(|v| v.split(',').map(|s| s.trim().to_string()).collect())
                 .unwrap_or_default(),
             config_file_path,
+            api_key: std::env::var("API_KEY")
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|s| !s.is_empty()),
         };
 
         // Overlay persisted config.json settings (user-editable via Settings UI)

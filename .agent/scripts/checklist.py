@@ -21,6 +21,11 @@ Priority Order:
 """
 
 import sys
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except AttributeError:
+        pass
 import subprocess
 import argparse
 from pathlib import Path

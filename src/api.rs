@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Query, State, WebSocketUpgrade},
-    response::IntoResponse,
+    extract::{Query, State, WebSocketUpgrade, Request},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::get,
     Json, Router,
 };
@@ -11,7 +12,7 @@ use serde::Deserialize;
 use crate::AppState;
 
 /// Build all API routes under /api/v1.
-pub fn routes() -> Router<Arc<AppState>> {
+pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/health", get(health))
         .route("/dashboard", get(dashboard))
@@ -25,6 +26,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/tools/update_mappings", axum::routing::post(update_mappings))
         .route("/tools/reset_offset", axum::routing::post(reset_log_offset))
         .route("/ws", get(ws_handler))
+        .layer(middleware::from_fn_with_state(state, auth_middleware))
 }
 
 // ── Health ───────────────────────────────────────────────────────────
@@ -143,6 +145,14 @@ async fn update_config(
     State(state): State<Arc<AppState>>,
     Json(body): Json<UpdateConfigInput>,
 ) -> impl IntoResponse {
+    if !is_safe_db_path(&body.db_path) {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Invalid db_path: Path traversal components (..) are not allowed"})),
+        )
+            .into_response();
+    }
+
     let mut config = state.config.write().await;
     
     // If the Steam API key is sent and isn't just the mask (••••••••) or empty, update it.
@@ -327,5 +337,74 @@ async fn reset_log_offset(State(state): State<Arc<AppState>>) -> impl IntoRespon
             Json(serde_json::json!({ "error": e.to_string() })),
         )
             .into_response(),
+    }
+}
+
+// ── Helpers & Middleware ─────────────────────────────────────────────
+
+fn is_safe_db_path(path_str: &str) -> bool {
+    let path = std::path::Path::new(path_str);
+    for component in path.components() {
+        if let std::path::Component::ParentDir = component {
+            return false;
+        }
+    }
+    true
+}
+
+async fn auth_middleware(
+    State(state): State<Arc<AppState>>,
+    req: Request,
+    next: Next,
+) -> Result<Response, impl IntoResponse> {
+    let method = req.method();
+    
+    // Only verify auth for mutating requests (POST, PUT, DELETE, etc.)
+    if method != axum::http::Method::GET && method != axum::http::Method::HEAD && method != axum::http::Method::OPTIONS {
+        let config = state.config.read().await;
+        if let Some(ref api_key) = config.api_key {
+            let mut provided_key = None;
+            
+            if let Some(auth_header) = req.headers().get(axum::http::header::AUTHORIZATION) {
+                if let Ok(auth_str) = auth_header.to_str() {
+                    if auth_str.starts_with("Bearer ") {
+                        provided_key = Some(auth_str[7..].trim());
+                    } else {
+                        provided_key = Some(auth_str.trim());
+                    }
+                }
+            } else if let Some(key_header) = req.headers().get("X-API-Key") {
+                if let Ok(key_str) = key_header.to_str() {
+                    provided_key = Some(key_str.trim());
+                }
+            }
+
+            match provided_key {
+                Some(key) if key == api_key => {}
+                _ => {
+                    return Err((
+                        axum::http::StatusCode::UNAUTHORIZED,
+                        Json(serde_json::json!({"error": "Unauthorized: Invalid or missing API key"})),
+                    ).into_response());
+                }
+            }
+        }
+    }
+    
+    Ok(next.run(req).await)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_safe_db_path() {
+        assert!(is_safe_db_path("db.sqlite"));
+        assert!(is_safe_db_path("/data/db.sqlite"));
+        assert!(is_safe_db_path("/data/gravity/db.sqlite"));
+        assert!(!is_safe_db_path("../db.sqlite"));
+        assert!(!is_safe_db_path("/data/../db.sqlite"));
+        assert!(!is_safe_db_path("foo/bar/../../db.sqlite"));
     }
 }

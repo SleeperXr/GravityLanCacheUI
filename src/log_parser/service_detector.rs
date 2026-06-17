@@ -82,6 +82,16 @@ const SERVICE_PATTERNS: &[(&str, &[&str])] = &[
         ],
     ),
     (
+        "windowsupdate",
+        &[
+            "*.windowsupdate.com",
+            "*.update.microsoft.com",
+            "*.dl.delivery.mp.microsoft.com",
+            "*.do.dsp.mp.microsoft.com",
+            "tsfe.trafficshaping.dsp.mp.microsoft.com",
+        ],
+    ),
+    (
         "xbox",
         &[
             "*.xboxlive.com",
@@ -90,16 +100,6 @@ const SERVICE_PATTERNS: &[(&str, &[&str])] = &[
             "assets1.xboxlive.com",
             "assets2.xboxlive.com",
             "*.delivery.mp.microsoft.com",
-        ],
-    ),
-    (
-        "windowsupdate",
-        &[
-            "*.windowsupdate.com",
-            "*.update.microsoft.com",
-            "*.dl.delivery.mp.microsoft.com",
-            "*.do.dsp.mp.microsoft.com",
-            "tsfe.trafficshaping.dsp.mp.microsoft.com",
         ],
     ),
     (

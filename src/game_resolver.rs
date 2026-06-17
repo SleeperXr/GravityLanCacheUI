@@ -68,6 +68,9 @@ impl GameResolver {
         // 5. Populate in-memory cache (caches both Some and None)
         {
             let mut cache = RESOLVE_CACHE.write().await;
+            if cache.len() >= 10000 {
+                cache.clear(); // Simple eviction to prevent memory leak
+            }
             cache.insert(cache_key, resolved.clone());
         }
 
@@ -76,26 +79,10 @@ impl GameResolver {
 }
 
 /// Use the Steam Web API to resolve a depot ID to an app name.
-async fn resolve_steam_depot(state: &Arc<AppState>, depot_id: &str) -> Option<String> {
-    // The Steam API doesn't provide a direct depot→app mapping.
-    // We use the GetAppList endpoint and maintain a local lookup table.
-    // For efficiency, we lazy-load the full app list once and cache it.
-    let api_key = state.config.read().await.steam_api_key.clone()?;
-
-    let url = format!(
-        "https://api.steampowered.com/ISteamApps/GetAppList/v2/?key={}",
-        api_key
-    );
-
-    let resp = reqwest::get(&url).await.ok()?;
-    let data: serde_json::Value = resp.json().await.ok()?;
-
-    // The app list doesn't map depots, but having it allows us to match
-    // app IDs that we might extract from other log patterns.
-    // For now, return None — the mapping file approach is more reliable.
-    let _ = data;
-    let _ = depot_id;
-
+/// Note: The Steam API doesn't provide a direct depot→app mapping, so this is currently a placeholder.
+/// We rely on the community-maintained mapping file approach which is more reliable.
+async fn resolve_steam_depot(state: &Arc<AppState>, _depot_id: &str) -> Option<String> {
+    let _api_key = state.config.read().await.steam_api_key.clone()?;
     None
 }
 

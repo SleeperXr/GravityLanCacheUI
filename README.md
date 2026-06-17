@@ -55,6 +55,7 @@ services:
 ### 2. Pfade anpassen
 
 Stelle sicher, dass die Host-Pfade auf der rechten Seite der Volumes (`/mnt/...`) mit deiner Unraid-Konfiguration übereinstimmen:
+
 - `/mnt/user/appdata/lancache/logs` sollte auf den Ordner zeigen, in dem LanCache seine `access.log` ablegt.
 - `/mnt/user/lancache` sollte das Hauptverzeichnis deines LanCaches sein (wo die Unterordner `cache` oder `installs` liegen).
 
@@ -69,7 +70,7 @@ Klicke im Docker Compose Plugin auf **Up**, um den Container herunterzuladen und
 Folgende Variablen können über die Compose-Datei konfiguriert werden:
 
 | Variable | Beschreibung | Standardwert |
-|---|---|---|
+| --- | --- | --- |
 | `TZ` | Zeitzone für korrekte Zeitstempel | `Europe/Berlin` |
 | `LANCACHE_LOGS_DIR` | Container-Pfad zu den LanCache-Logs | `/data/logs` |
 | `LANCACHE_CACHE_DIR` | Container-Pfad zum LanCache-Speicherverzeichnis | `/data/cache` |
@@ -88,6 +89,7 @@ Folgende Variablen können über die Compose-Datei konfiguriert werden:
 ## Setup Wizard (Ersteinrichtung)
 
 Beim ersten Aufruf des Dashboards prüft der integrierte Assistent automatisch:
+
 1. Ob das Log-Verzeichnis existiert und lesbar ist.
 2. Ob die `access.log` gefunden wurde.
 3. Ob das Cache-Verzeichnis für Speicherplatzberichte erreichbar ist.
