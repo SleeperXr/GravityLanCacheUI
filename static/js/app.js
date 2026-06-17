@@ -1733,6 +1733,16 @@ document.addEventListener('DOMContentLoaded', () => {
   ws.connect();
   setupLiveFeed();
 
+  // Fetch and display dynamic application version from API
+  API.get('/health').then(res => {
+    if (res.version) {
+      const versionSidebar = document.getElementById('app-version-sidebar');
+      const versionLogo = document.getElementById('app-version-logo');
+      if (versionSidebar) versionSidebar.textContent = 'v' + res.version;
+      if (versionLogo) versionLogo.textContent = 'v' + res.version.split('.').slice(0, 2).join('.');
+    }
+  }).catch(() => {});
+
   // Load initial page
   navigate('dashboard');
 
