@@ -663,6 +663,7 @@ tbody tr:hover {
   background: rgba(16, 185, 129, 0.05);
   border-color: rgba(16, 185, 129, 0.2);
   box-shadow: var(--shadow-sm), 0 0 15px rgba(16, 185, 129, 0.05);
+  flex: 0 1 auto;
 }
 
 .parser-progress-label {
@@ -844,6 +845,7 @@ tbody tr:hover {
     inset: 0;
     background: rgba(0, 0, 0, 0.5);
     z-index: 90;
+    -webkit-backdrop-filter: blur(2px);
     backdrop-filter: blur(2px);
     display: none;
   }
@@ -876,5 +878,102 @@ tbody tr:hover {
   .wizard-card {
     padding: var(--space-lg);
   }
+}
+
+/* ── Prefill Modals & Terminal ──────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(6, 9, 19, 0.85);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  animation: fadeIn 0.2s ease forwards;
+}
+
+.modal-card {
+  width: 90%;
+  max-width: 800px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 0 30px rgba(99, 102, 241, 0.1);
+  display: flex;
+  flex-direction: column;
+  max-height: 85vh;
+  overflow: hidden;
+}
+
+.modal-body {
+  padding: var(--space-md) var(--space-lg);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  padding: var(--space-sm) var(--space-lg);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.terminal-window {
+  background: #02040a;
+  border: 1px solid #1a2035;
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #39ff14; /* Matrix neon green */
+  height: 350px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  box-shadow: inset 0 0 20px rgba(0,0,0,0.9);
+}
+
+.terminal-window.log-mode {
+  color: var(--text-secondary);
+  height: 450px;
+}
+
+.terminal-input-wrapper {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.terminal-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.terminal-ctrl-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.terminal-ctrl-btn:hover {
+  background: var(--accent-primary-glow);
+  border-color: var(--accent-primary);
 }
 

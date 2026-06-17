@@ -650,6 +650,46 @@ async function renderClients(container) {
 
 // ── Page: Prefill ────────────────────────────────────────────────────
 
+// ── Page: Prefill ────────────────────────────────────────────────────
+
+function updateNextRunDisplay() {
+  const timeInput = document.getElementById('prefill-schedule-time');
+  const steamInput = document.getElementById('prefill-steam-enabled');
+  const bnetInput = document.getElementById('prefill-battlenet-enabled');
+  const epicInput = document.getElementById('prefill-epic-enabled');
+  
+  const el = document.getElementById('prefill-scheduler-next-run');
+  if (!el || !timeInput) return;
+  
+  const time = timeInput.value.trim();
+  const steam = steamInput ? steamInput.checked : false;
+  const bnet = bnetInput ? bnetInput.checked : false;
+  const epic = epicInput ? epicInput.checked : false;
+  
+  if (!steam && !bnet && !epic) {
+    el.textContent = 'Scheduler is inactive (no platforms enabled)';
+    return;
+  }
+  
+  const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  if (!timeRegex.test(time)) {
+    el.textContent = 'Invalid time format';
+    return;
+  }
+  
+  const [hours, minutes] = time.split(':').map(Number);
+  const now = new Date();
+  const scheduledTime = new Date();
+  scheduledTime.setHours(hours, minutes, 0, 0);
+  
+  if (scheduledTime <= now) {
+    scheduledTime.setDate(scheduledTime.getDate() + 1);
+  }
+  
+  const options = { weekday: 'short', hour: '2-digit', minute: '2-digit' };
+  el.innerHTML = `⏰ Next run: <strong style="color:var(--accent-primary-light)">${scheduledTime.toLocaleDateString(undefined, options)}</strong>`;
+}
+
 async function renderPrefill(container) {
   container.innerHTML = `
     <div class="card" style="margin-bottom:var(--space-md)">
@@ -658,49 +698,435 @@ async function renderPrefill(container) {
       </div>
       <p style="color:var(--text-secondary);margin-bottom:16px">
         Pre-warm your LanCache by downloading game data before your clients need it.
-        Integrates with SteamPrefill, BattleNetPrefill, and EpicPrefill.
+        Integrates directly with SteamPrefill, BattleNetPrefill, and EpicPrefill.
       </p>
     </div>
 
-    <div class="stats-grid" id="prefill-platforms">
-      ${['Steam', 'Battle.net', 'Epic Games'].map(name => {
-        const id = name.toLowerCase().replace(/[^a-z]/g, '');
-        return `
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">${name}</div>
-              <span class="badge badge-miss">Not configured</span>
-            </div>
-            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px">
-              Configure in container shell first.
-            </p>
-            <button class="btn btn-ghost" onclick="runPrefill('${id}')" id="prefill-btn-${id}">
-              ⚡ Run Prefill
-            </button>
+    <!-- Configuration & Schedule -->
+    <div class="grid-3" style="margin-bottom:var(--space-md)">
+      <div class="card" style="grid-column: span 3">
+        <div class="card-header">
+          <div class="card-title">📅 Automatic Prefill Scheduler</div>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+          <div>
+            <label style="display:block;color:var(--text-secondary);font-size:0.85rem;margin-bottom:6px">Trigger Time (HH:MM Local Time)</label>
+            <input class="input" id="prefill-schedule-time" type="text" placeholder="e.g. 02:00" value="02:00" style="max-width:150px">
           </div>
-        `;
-      }).join('')}
+          <div>
+            <label style="display:block;color:var(--text-secondary);font-size:0.85rem;margin-bottom:6px">Enabled Platforms</label>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem;">
+                <input type="checkbox" id="prefill-steam-enabled"> SteamPrefill
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem;">
+                <input type="checkbox" id="prefill-battlenet-enabled"> BattleNetPrefill
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem;">
+                <input type="checkbox" id="prefill-epic-enabled"> EpicPrefill
+              </label>
+            </div>
+          </div>
+          <div>
+            <label style="display:block;color:var(--text-secondary);font-size:0.85rem;margin-bottom:6px">Startup Options</label>
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem; margin-top:8px;">
+              <input type="checkbox" id="prefill-startup-enabled"> Run scheduled prefills on container startup
+            </label>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:16px;">
+          <button class="btn" onclick="savePrefillConfig()" id="btn-save-prefill-config">💾 Save Schedule Configuration</button>
+          <span id="prefill-scheduler-next-run" style="font-size: 0.85rem; font-family: var(--font-mono); font-weight: 500;"></span>
+          <span id="prefill-config-status" style="font-size: 0.85rem; font-weight:700;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Platforms Grid -->
+    <div class="grid-3" id="prefill-platforms">
+      <div class="empty-state">⏳ Loading prefill status...</div>
     </div>
   `;
+
+  loadPrefillConfig();
+  loadPrefillStatus();
+  
+  // Attach change listeners to update next run display immediately
+  setTimeout(() => {
+    const timeEl = document.getElementById('prefill-schedule-time');
+    const steamEl = document.getElementById('prefill-steam-enabled');
+    const bnetEl = document.getElementById('prefill-battlenet-enabled');
+    const epicEl = document.getElementById('prefill-epic-enabled');
+    if (timeEl) timeEl.addEventListener('input', updateNextRunDisplay);
+    if (steamEl) steamEl.addEventListener('change', updateNextRunDisplay);
+    if (bnetEl) bnetEl.addEventListener('change', updateNextRunDisplay);
+    if (epicEl) epicEl.addEventListener('change', updateNextRunDisplay);
+  }, 100);
+  
+  // Set up periodic status reload
+  window.prefillStatusTimer = setInterval(loadPrefillStatus, 5000);
+}
+
+// Ensure timer is cleared when page changes
+const originalChangePage = window.changePage;
+window.changePage = function(pageId) {
+  if (window.prefillStatusTimer) {
+    clearInterval(window.prefillStatusTimer);
+    window.prefillStatusTimer = null;
+  }
+  if (originalChangePage) {
+    originalChangePage(pageId);
+  }
+};
+
+async function loadPrefillConfig() {
+  try {
+    const config = await API.get('/prefill/config');
+    document.getElementById('prefill-schedule-time').value = config.cron_schedule || '02:00';
+    document.getElementById('prefill-steam-enabled').checked = config.steam_enabled;
+    document.getElementById('prefill-battlenet-enabled').checked = config.battlenet_enabled;
+    document.getElementById('prefill-epic-enabled').checked = config.epic_enabled;
+    document.getElementById('prefill-startup-enabled').checked = config.run_on_startup;
+    updateNextRunDisplay();
+  } catch (e) {
+    console.error('Failed to load prefill config:', e);
+  }
+}
+
+async function savePrefillConfig() {
+  const btn = document.getElementById('btn-save-prefill-config');
+  const status = document.getElementById('prefill-config-status');
+  if (btn) btn.disabled = true;
+  
+  const scheduleTime = document.getElementById('prefill-schedule-time').value.trim();
+  const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+  if (!timeRegex.test(scheduleTime)) {
+    if (status) {
+      status.style.color = 'var(--color-error)';
+      status.textContent = '❌ Invalid time format! Use HH:MM (e.g. 02:00)';
+    }
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  const payload = {
+    steam_enabled: document.getElementById('prefill-steam-enabled').checked,
+    battlenet_enabled: document.getElementById('prefill-battlenet-enabled').checked,
+    epic_enabled: document.getElementById('prefill-epic-enabled').checked,
+    cron_schedule: scheduleTime,
+    run_on_startup: document.getElementById('prefill-startup-enabled').checked,
+  };
+
+  try {
+    await API.put('/prefill/config', payload);
+    if (status) {
+      status.style.color = 'var(--color-hit)';
+      status.textContent = '✅ Schedule saved successfully!';
+    }
+    updateNextRunDisplay();
+  } catch (e) {
+    if (status) {
+      status.style.color = 'var(--color-error)';
+      status.textContent = `❌ Save failed: ${e.message || e}`;
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+    setTimeout(() => { if (status) status.textContent = ''; }, 3000);
+  }
+}
+
+async function loadPrefillStatus() {
+  const grid = document.getElementById('prefill-platforms');
+  if (!grid) return;
+
+  try {
+    const res = await API.get('/prefill/status');
+    const platforms = res.platforms || [];
+    
+    const platformMeta = {
+      steam: { name: 'Steam', folder: 'SteamPrefill' },
+      battlenet: { name: 'Battle.net', folder: 'BattleNetPrefill' },
+      epic: { name: 'Epic Games', folder: 'EpicPrefill' }
+    };
+
+    grid.innerHTML = platforms.map(p => {
+      const meta = platformMeta[p.platform] || { name: p.platform.toUpperCase(), folder: p.platform };
+      const isConfigured = p.selected_apps && p.selected_apps.length > 0;
+      
+      let badgeClass = 'badge-miss';
+      let badgeText = 'Not configured';
+      if (p.running) {
+        badgeClass = 'badge-warning';
+        badgeText = '⏳ Prefilling...';
+      } else if (isConfigured) {
+        badgeClass = 'badge-hit';
+        badgeText = 'Active';
+      }
+
+      const statusDesc = p.running
+        ? `⚙️ Run is active in background.`
+        : (isConfigured 
+            ? `🟢 ${p.selected_apps.length} game(s) selected for prefilling.` 
+            : `❌ No games selected yet. Log in via CLI console.`);
+
+      // Dynamic Active App Display
+      let activeAppHtml = '';
+      if (p.running) {
+        if (p.active_app) {
+          activeAppHtml = `
+            <div style="margin-top: 10px; padding: 10px; background: rgba(245, 158, 11, 0.08); border-left: 3px solid var(--color-warning); border-radius: 4px; font-size: 0.8rem; text-align: left;">
+              <div style="font-weight:700; color:var(--color-warning); margin-bottom: 2px;">⚡ Prefilling Game:</div>
+              <div style="font-weight:600; color:var(--text-primary); font-family:var(--font-mono); word-break:break-all;">${escapeHtml(p.active_app)}</div>
+            </div>
+          `;
+        }
+      }
+
+      // Dynamic History & Summary Display
+      let historyHtml = '';
+      if (!p.running) {
+        if (p.last_run) {
+          historyHtml += `
+            <div style="margin-top: 10px; font-size: 0.8rem; color:var(--text-secondary); text-align: left;">
+              <strong>Last Run:</strong> <span style="font-family:var(--font-mono); color:var(--text-primary);">${escapeHtml(p.last_run)}</span>
+            </div>
+          `;
+        }
+        if (p.completed_apps && p.completed_apps.length > 0) {
+          historyHtml += `
+            <div style="margin-top: 8px; padding: 8px; background: rgba(16, 185, 129, 0.05); border-radius: 4px; font-size: 0.75rem; border: 1px solid rgba(16, 185, 129, 0.1); text-align: left;">
+              <div style="font-weight:700; color:var(--color-hit); font-size:0.7rem; text-transform:uppercase; margin-bottom: 3px;">Prefilled in last run:</div>
+              <div style="color:var(--text-primary); font-family:var(--font-mono); max-height: 60px; overflow-y: auto; line-height: 1.4;">
+                ${p.completed_apps.map(app => escapeHtml(app)).join(', ')}
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      let summaryHtml = '';
+      if (p.last_log_summary) {
+        summaryHtml = `
+          <div style="margin-top: 6px; font-size: 0.75rem; color:var(--text-muted); font-family:var(--font-mono); word-break:break-word; text-align: left; line-height:1.3;">
+            📝 ${escapeHtml(p.last_log_summary)}
+          </div>
+        `;
+      }
+
+      return `
+        <div class="card" style="display:flex; flex-direction:column; justify-content:space-between; height: 100%;">
+          <div>
+            <div class="card-header">
+              <div class="card-title">${meta.name}</div>
+              <span class="badge ${badgeClass}">${badgeText}</span>
+            </div>
+            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px; min-height:40px;">
+              ${statusDesc}
+            </p>
+            ${activeAppHtml}
+            ${historyHtml}
+            ${summaryHtml}
+          </div>
+          <div style="margin-top:auto; display:flex; flex-direction:column; gap:8px; padding-top: 12px;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+              <button class="btn btn-ghost" onclick="openInteractiveConsole('${p.platform}')" style="font-size:0.75rem; padding: 8px 6px;" ${p.running ? 'disabled' : ''}>
+                🖥️ Setup Console
+              </button>
+              <button class="btn btn-ghost" onclick="openPrefillLogs('${p.platform}')" style="font-size:0.75rem; padding: 8px 6px;">
+                📄 View Logs
+              </button>
+            </div>
+            <button class="btn" onclick="runPrefill('${p.platform}')" id="prefill-btn-${p.platform}" style="width:100%" ${p.running ? 'disabled' : ''}>
+              ${p.running ? '⏳ Prefilling...' : '⚡ Run Prefill'}
+            </button>
+            <div id="prefill-error-${p.platform}" style="color:var(--color-error); font-size:0.75rem; margin-top:8px; display:none; text-align:left; word-break:break-word;"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    grid.innerHTML = `<div class="empty-state" style="color:var(--color-error)">❌ Failed to load prefill platforms status: ${escapeHtml(e.message || e)}</div>`;
+  }
 }
 
 async function runPrefill(platform) {
   const btn = document.getElementById('prefill-btn-' + platform);
+  const errorDiv = document.getElementById('prefill-error-' + platform);
+  if (errorDiv) {
+    errorDiv.style.display = 'none';
+    errorDiv.textContent = '';
+  }
   if (btn) {
-    btn.textContent = '⏳ Running...';
+    btn.textContent = '⏳ Starting...';
     btn.disabled = true;
   }
 
   try {
     await API.post('/prefill/run/' + platform);
-    if (btn) btn.textContent = '✅ Completed';
+    if (btn) btn.textContent = '⏳ Running...';
+    loadPrefillStatus();
+    // Open logs automatically so user sees the progress!
+    setTimeout(() => openPrefillLogs(platform), 1000);
   } catch (e) {
     if (btn) btn.textContent = '❌ Failed';
-  } finally {
-    setTimeout(() => {
-      if (btn) { btn.textContent = '⚡ Run Prefill'; btn.disabled = false; }
-    }, 3000);
+    if (errorDiv) {
+      errorDiv.textContent = `Error: ${e.message || e.error || e}`;
+      errorDiv.style.display = 'block';
+    }
   }
+}
+
+function openPrefillLogs(platform) {
+  const existing = document.getElementById('prefill-logs-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'prefill-logs-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 900px;">
+      <div class="card-header" style="padding:16px 24px; border-bottom:1px solid var(--border-subtle)">
+        <div class="card-title">📄 Prefill Logs: ${platform.toUpperCase()}</div>
+      </div>
+      <div class="modal-body" style="background:#02040a;">
+        <pre id="prefill-logs-content" class="terminal-window log-mode">⏳ Fetching logs...</pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="fetchLastPrefillLog('${platform}')">🔄 Refresh</button>
+        <button class="btn" onclick="document.getElementById('prefill-logs-modal').remove()">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  fetchLastPrefillLog(platform);
+
+  const intervalId = setInterval(() => {
+    const modalEl = document.getElementById('prefill-logs-modal');
+    if (!modalEl) {
+      clearInterval(intervalId);
+      return;
+    }
+    fetchLastPrefillLog(platform);
+  }, 2000);
+}
+
+async function fetchLastPrefillLog(platform) {
+  const logsPre = document.getElementById('prefill-logs-content');
+  if (!logsPre) return;
+
+  try {
+    const res = await API.get('/prefill/log/' + platform);
+    logsPre.textContent = res.log || 'No logs recorded.';
+    logsPre.scrollTop = logsPre.scrollHeight;
+  } catch (e) {
+    logsPre.textContent = `Error reading log file: ${e.message || e}`;
+  }
+}
+
+function openInteractiveConsole(platform) {
+  const existing = document.getElementById('prefill-interactive-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'prefill-interactive-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card">
+      <div class="card-header" style="padding:16px 24px; border-bottom:1px solid var(--border-subtle)">
+        <div class="card-title">🖥️ Interactive Setup Console: ${platform.toUpperCase()}</div>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info" style="font-size:0.75rem; margin-bottom:12px; padding: 8px 12px; background:rgba(59, 130, 246, 0.08); border:1px solid rgba(59, 130, 246, 0.2)">
+          💡 Type inputs (like username/password/Steam Guard) in the box below and press Enter. 
+          Use the controller buttons to navigate menus (requires arrow keys/space to check games).
+        </div>
+        <pre id="interactive-terminal" class="terminal-window">⏳ Connecting to console session...</pre>
+        
+        <div class="terminal-input-wrapper">
+          <input class="input" id="terminal-input" type="text" placeholder="Type input here..." autofocus style="background:#0c1020;">
+          <button class="btn" id="terminal-send-btn">Send</button>
+        </div>
+        
+        <div class="terminal-controls">
+          <button class="terminal-ctrl-btn" onclick="sendTerminalKey('\\\\x1B[A')">⬆️ Up</button>
+          <button class="terminal-ctrl-btn" onclick="sendTerminalKey('\\\\x1B[B')">⬇️ Down</button>
+          <button class="terminal-ctrl-btn" onclick="sendTerminalKey(' ')">⎵ Space (Select)</button>
+          <button class="terminal-ctrl-btn" onclick="sendTerminalKey('\\\\r\\\\n')">↵ Enter (Confirm)</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeInteractiveConsole()">Close Console</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  setTimeout(() => {
+    const input = document.getElementById('terminal-input');
+    if (input) input.focus();
+  }, 100);
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${window.location.host}/api/v1/prefill/interactive/${platform}`;
+  
+  const ws = new WebSocket(wsUrl);
+  window.prefillWs = ws;
+  const term = document.getElementById('interactive-terminal');
+
+  ws.onopen = () => {
+    term.textContent = '';
+    term.textContent += '[Connected to prefill setup session]\\n';
+  };
+
+  ws.onmessage = (event) => {
+    term.textContent += event.data;
+    term.scrollTop = term.scrollHeight;
+  };
+
+  ws.onerror = (event) => {
+    term.textContent += '\\n[WebSocket error encountered]\\n';
+  };
+
+  ws.onclose = () => {
+    term.textContent += '\\n[Session disconnected]\\n';
+  };
+
+  const inputEl = document.getElementById('terminal-input');
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      sendTerminalInput();
+    }
+  });
+
+  const sendBtn = document.getElementById('terminal-send-btn');
+  sendBtn.addEventListener('click', sendTerminalInput);
+}
+
+function sendTerminalInput() {
+  const inputEl = document.getElementById('terminal-input');
+  if (!inputEl || !window.prefillWs || window.prefillWs.readyState !== WebSocket.OPEN) return;
+  
+  const text = inputEl.value;
+  window.prefillWs.send(text);
+  inputEl.value = '';
+}
+
+function sendTerminalKey(key) {
+  if (window.prefillWs && window.prefillWs.readyState === WebSocket.OPEN) {
+    const parsedKey = key.replace(/\\\\x1B/g, '\\x1B').replace(/\\\\r/g, '\\r').replace(/\\\\n/g, '\\n');
+    window.prefillWs.send(parsedKey);
+  }
+}
+
+function closeInteractiveConsole() {
+  if (window.prefillWs) {
+    window.prefillWs.close();
+    window.prefillWs = null;
+  }
+  const modal = document.getElementById('prefill-interactive-modal');
+  if (modal) modal.remove();
+  loadPrefillStatus();
 }
 
 // ── Page: Settings ───────────────────────────────────────────────────

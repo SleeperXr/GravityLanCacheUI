@@ -121,6 +121,11 @@ async fn main() {
         network_monitor::run_network_monitor(net_state).await;
     });
 
+    let prefill_scheduler_state = state.clone();
+    tokio::spawn(async move {
+        prefill::run_prefill_scheduler(prefill_scheduler_state).await;
+    });
+
     let cors = CorsLayer::new()
         .allow_origin(tower_http::cors::Any)
         .allow_methods([

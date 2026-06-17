@@ -22,6 +22,9 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/logs", get(get_logs))
         .route("/prefill/status", get(prefill_status))
         .route("/prefill/run/{platform}", axum::routing::post(prefill_run))
+        .route("/prefill/config", get(get_prefill_config).put(update_prefill_config))
+        .route("/prefill/log/{platform}", get(prefill_log))
+        .route("/prefill/interactive/{platform}", get(prefill_interactive_ws))
         .route("/cache/latest", get(latest_cache_snapshot))
         .route("/tools/update_mappings", axum::routing::post(update_mappings))
         .route("/tools/reset_offset", axum::routing::post(reset_log_offset))
@@ -189,8 +192,15 @@ async fn prefill_status(State(state): State<Arc<AppState>>) -> Json<serde_json::
         let config = state.config.read().await;
         config.lancache_cache_dir.clone()
     };
+    let db_parent = {
+        let config = state.config.read().await;
+        std::path::Path::new(&config.db_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/data/gravitylancacheui".to_string())
+    };
     let manager = crate::prefill::PrefillManager::new(&cache_dir);
-    let statuses = manager.get_status().await;
+    let statuses = manager.get_status(&db_parent).await;
     Json(serde_json::json!({ "platforms": statuses }))
 }
 
@@ -202,12 +212,20 @@ async fn prefill_run(
         let config = state.config.read().await;
         config.lancache_cache_dir.clone()
     };
+    let db_parent = {
+        let config = state.config.read().await;
+        std::path::Path::new(&config.db_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/data/gravitylancacheui".to_string())
+    };
+
     let manager = crate::prefill::PrefillManager::new(&cache_dir);
 
-    match manager.run_prefill(&platform).await {
-        Ok(output) => Json(serde_json::json!({
-            "status": "completed",
-            "output": output,
+    match manager.run_prefill_async(&platform, &db_parent).await {
+        Ok(_) => Json(serde_json::json!({
+            "status": "started",
+            "message": format!("Prefill for {} started in background", platform),
         }))
         .into_response(),
         Err(e) => (
@@ -216,6 +234,218 @@ async fn prefill_run(
         )
             .into_response(),
     }
+}
+
+async fn get_prefill_config(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let db_parent = {
+        let config = state.config.read().await;
+        std::path::Path::new(&config.db_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/data/gravitylancacheui".to_string())
+    };
+    let config = crate::prefill::PrefillManager::load_config(&db_parent);
+    Json(config)
+}
+
+async fn update_prefill_config(
+    State(state): State<Arc<AppState>>,
+    Json(new_config): Json<crate::prefill::PrefillConfig>,
+) -> impl IntoResponse {
+    let db_parent = {
+        let config = state.config.read().await;
+        std::path::Path::new(&config.db_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/data/gravitylancacheui".to_string())
+    };
+    
+    match crate::prefill::PrefillManager::save_config(&db_parent, &new_config) {
+        Ok(_) => Json(serde_json::json!({ "status": "saved" })).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": format!("Failed to save config: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+async fn prefill_log(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(platform): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    let db_parent = {
+        let config = state.config.read().await;
+        std::path::Path::new(&config.db_path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/data/gravitylancacheui".to_string())
+    };
+
+    let log_file_path = std::path::Path::new(&db_parent)
+        .join(format!("prefill_{}_last.log", platform));
+
+    if log_file_path.exists() {
+        match std::fs::read_to_string(&log_file_path) {
+            Ok(content) => Json(serde_json::json!({
+                "platform": platform,
+                "log": content,
+            }))
+            .into_response(),
+            Err(e) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to read log: {}", e)})),
+            )
+                .into_response(),
+        }
+    } else {
+        Json(serde_json::json!({
+            "platform": platform,
+            "log": "No log file found. Run a prefill first.",
+        }))
+        .into_response()
+    }
+}
+
+async fn prefill_interactive_ws(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(platform): axum::extract::Path<String>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_prefill_interactive_socket(socket, platform, state))
+}
+
+async fn handle_prefill_interactive_socket(
+    mut socket: axum::extract::ws::WebSocket,
+    platform: String,
+    state: Arc<AppState>,
+) {
+    use futures::{SinkExt, StreamExt};
+    
+    let cache_dir = {
+        let config = state.config.read().await;
+        config.lancache_cache_dir.clone()
+    };
+    
+    let (dir_name, binary) = match platform.as_str() {
+        "steam" => ("SteamPrefill", "SteamPrefill"),
+        "battlenet" => ("BattleNetPrefill", "BattleNetPrefill"),
+        "epic" => ("EpicPrefill", "EpicPrefill"),
+        _ => {
+            let _ = socket.close().await;
+            return;
+        }
+    };
+
+    let binary_path = format!("{}/{}/{}", cache_dir, dir_name, binary);
+    let working_dir = format!("{}/{}", cache_dir, dir_name);
+
+    if !std::path::Path::new(&binary_path).exists() {
+        let _ = socket.send(axum::extract::ws::Message::Text(format!("Error: Prefill binary not found at {}", binary_path).into())).await;
+        let _ = socket.close().await;
+        return;
+    }
+
+    let mut child = match tokio::process::Command::new(&binary_path)
+        .arg("select-apps")
+        .current_dir(&working_dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .env("TERM", "dumb") 
+        .spawn() 
+    {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = socket.send(axum::extract::ws::Message::Text(format!("Error spawning process: {}", e).into())).await;
+            let _ = socket.close().await;
+            return;
+        }
+    };
+
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+
+    let (ws_tx, mut ws_rx) = tokio::sync::mpsc::channel::<axum::extract::ws::Message>(100);
+    let (mut ws_sender, mut ws_receiver) = socket.split();
+
+    let stdout_tx_chan = ws_tx.clone();
+    let stdout_tx = async move {
+        let mut stdout_reader = tokio::io::BufReader::new(stdout);
+        let mut stdout_buf = vec![0u8; 1024];
+        loop {
+            use tokio::io::AsyncReadExt;
+            match stdout_reader.read(&mut stdout_buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    let text = String::from_utf8_lossy(&stdout_buf[..n]);
+                    if stdout_tx_chan.send(axum::extract::ws::Message::Text(text.into_owned().into())).await.is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    };
+
+    let stderr_tx_chan = ws_tx.clone();
+    let stderr_tx = async move {
+        let mut stderr_reader = tokio::io::BufReader::new(stderr);
+        let mut stderr_buf = vec![0u8; 1024];
+        loop {
+            use tokio::io::AsyncReadExt;
+            match stderr_reader.read(&mut stderr_buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    let text = String::from_utf8_lossy(&stderr_buf[..n]);
+                    if stderr_tx_chan.send(axum::extract::ws::Message::Text(text.into_owned().into())).await.is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    };
+
+    let stdin_rx = async move {
+        while let Some(Ok(msg)) = ws_receiver.next().await {
+            if let axum::extract::ws::Message::Text(text) = msg {
+                use tokio::io::AsyncWriteExt;
+                let mut input_str = text.to_string();
+                if !input_str.ends_with('\n') {
+                    input_str.push('\n');
+                }
+                if stdin.write_all(input_str.as_bytes()).await.is_err() {
+                    break;
+                }
+                let _ = stdin.flush().await;
+            }
+        }
+    };
+
+    let ws_writer = async move {
+        while let Some(msg) = ws_rx.recv().await {
+            if ws_sender.send(msg).await.is_err() {
+                break;
+            }
+        }
+    };
+
+    let wait_proc = async {
+        let _ = child.wait().await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    };
+
+    tokio::select! {
+        _ = stdout_tx => {},
+        _ = stderr_tx => {},
+        _ = stdin_rx => {},
+        _ = ws_writer => {},
+        _ = wait_proc => {},
+    }
+
+    let _ = child.kill().await;
 }
 
 // ── WebSocket ────────────────────────────────────────────────────────

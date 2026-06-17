@@ -8,7 +8,7 @@ use crate::db::CacheSnapshot;
 use crate::AppState;
 
 static STEAM_DEPOT_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"/depot/(\d+)/").expect("Invalid depot regex")
+    Regex::new(r"depot/(\d+)/").expect("Invalid depot regex")
 });
 
 struct ScanResult {
@@ -182,6 +182,15 @@ fn extract_url_from_nginx_cache_file(path: &std::path::Path) -> Option<String> {
     let bytes_read = file.read(&mut buf).ok()?;
     let content = String::from_utf8_lossy(&buf[..bytes_read]);
     
+    if let Some(idx) = content.find("KEY: ") {
+        let sub = &content[idx + 5..];
+        let end_idx = sub.find(|c: char| c == '\0' || c == '\n' || c == '\r' || c.is_control() || c == '"')
+            .unwrap_or(sub.len());
+        let key = sub[..end_idx].trim().to_string();
+        if !key.is_empty() {
+            return Some(key);
+        }
+    }
     if let Some(idx) = content.find("http://") {
         let sub = &content[idx..];
         let end_idx = sub.find(|c: char| c == '\0' || c == '\n' || c == '\r' || c.is_control() || c == ' ' || c == '"')
@@ -205,7 +214,13 @@ fn parse_url_info(url: &str) -> (String, Option<String>) {
     let (host, path) = url_sans_protocol.split_once('/')
         .unwrap_or((url_sans_protocol, ""));
         
-    let service = crate::log_parser::ServiceDetector::detect(host);
+    let host_lower = host.to_lowercase();
+    let service = match host_lower.as_str() {
+        "steam" | "epicgames" | "gog" | "origin" | "ubisoft" | "battlenet" | 
+        "windowsupdate" | "xbox" | "riotgames" | "nintendo" | "playstation" | 
+        "rockstar" | "arenanet" | "wargaming" => host_lower,
+        _ => crate::log_parser::ServiceDetector::detect(host),
+    };
     
     let download_id = match service.as_str() {
         "steam" => {
@@ -220,4 +235,37 @@ fn parse_url_info(url: &str) -> (String, Option<String>) {
     };
     
     (service, download_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_url_info_with_protocol() {
+        let (service, download_id) = parse_url_info("http://cache1.steamcontent.com/depot/228990/chunk/12345");
+        assert_eq!(service, "steam");
+        assert_eq!(download_id, Some("228990".to_string()));
+    }
+
+    #[test]
+    fn test_parse_url_info_no_protocol() {
+        let (service, download_id) = parse_url_info("steam/depot/228990/chunk/12345");
+        assert_eq!(service, "steam");
+        assert_eq!(download_id, Some("228990".to_string()));
+    }
+
+    #[test]
+    fn test_parse_url_info_epicgames_no_protocol() {
+        let (service, download_id) = parse_url_info("epicgames/apps/ids/12345");
+        assert_eq!(service, "epicgames");
+        assert_eq!(download_id, Some("apps".to_string()));
+    }
+
+    #[test]
+    fn test_parse_url_info_other_service() {
+        let (service, download_id) = parse_url_info("battlenet/tpr/sc2/data/abcd");
+        assert_eq!(service, "battlenet");
+        assert_eq!(download_id, None);
+    }
 }
