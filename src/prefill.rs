@@ -351,15 +351,15 @@ pub async fn run_prefill_scheduler(state: Arc<crate::AppState>) {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| "/data/gravitylancacheui".to_string())
         };
-        let cache_dir = {
+        let prefill_dir = {
             let config = state.config.read().await;
-            config.lancache_cache_dir.clone()
+            config.prefill_dir.clone()
         };
         let prefill_config = PrefillManager::load_config(&db_parent);
         
         if prefill_config.run_on_startup {
             tracing::info!("Prefill run on startup is enabled. Triggering prefills...");
-            let manager = PrefillManager::new(&cache_dir);
+            let manager = PrefillManager::new(&prefill_dir);
             if prefill_config.steam_enabled {
                 let _ = manager.run_prefill_async("steam", &db_parent).await;
             }
@@ -382,9 +382,9 @@ pub async fn run_prefill_scheduler(state: Arc<crate::AppState>) {
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|| "/data/gravitylancacheui".to_string())
         };
-        let cache_dir = {
+        let prefill_dir = {
             let config = state.config.read().await;
-            config.lancache_cache_dir.clone()
+            config.prefill_dir.clone()
         };
 
         let prefill_config = PrefillManager::load_config(&db_parent);
@@ -394,7 +394,7 @@ pub async fn run_prefill_scheduler(state: Arc<crate::AppState>) {
 
         if prefill_config.cron_schedule == current_time {
             tracing::info!("Scheduled prefill trigger time matched: {}", current_time);
-            let manager = PrefillManager::new(&cache_dir);
+            let manager = PrefillManager::new(&prefill_dir);
             
             if prefill_config.steam_enabled {
                 let _ = manager.run_prefill_async("steam", &db_parent).await;

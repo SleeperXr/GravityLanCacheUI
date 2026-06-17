@@ -14,6 +14,7 @@ pub struct AppConfig {
     pub excluded_ips: Vec<String>,
     pub config_file_path: String,
     pub api_key: Option<String>,
+    pub prefill_dir: String,
 }
 
 impl AppConfig {
@@ -57,6 +58,8 @@ impl AppConfig {
                 .ok()
                 .map(|v| v.trim().to_string())
                 .filter(|s| !s.is_empty()),
+            prefill_dir: std::env::var("PREFILL_DIR")
+                .unwrap_or_else(|_| "/data/gravitylancacheui".into()),
         };
 
         // Overlay persisted config.json settings (user-editable via Settings UI)

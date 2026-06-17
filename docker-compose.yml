@@ -13,6 +13,7 @@ services:
       - LANCACHE_CACHE_DIR=/lancache/cache
       - CACHE_SCAN_INTERVAL_SECS=300
       - LOG_RETENTION_DAYS=90
+      # - PREFILL_DIR=/data/gravitylancacheui
       # - STEAM_API_KEY=your_key_here
       # - EXCLUDED_IPS=192.168.1.1,10.0.0.1
     volumes:

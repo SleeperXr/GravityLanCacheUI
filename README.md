@@ -75,6 +75,7 @@ Folgende Variablen können über die Compose-Datei konfiguriert werden:
 | `LANCACHE_LOGS_DIR` | Container-Pfad zu den LanCache-Logs | `/data/logs` |
 | `LANCACHE_CACHE_DIR` | Container-Pfad zum LanCache-Speicherverzeichnis | `/data/cache` |
 | `DB_PATH` | Pfad zur SQLite-Datenbank im Container | `/data/gravitylancacheui/db.sqlite` |
+| `PREFILL_DIR` | Verzeichnis mit den Prefill-Ordnern (SteamPrefill etc.) | `/data/gravitylancacheui` |
 | `CONFIG_FILE` | Pfad zur Einstellungsdatei im Container | `/data/gravitylancacheui/config.json` |
 | `LISTEN_PORT` | Port, auf dem das Webinterface lauscht | `8080` |
 | `CACHE_SCAN_INTERVAL_SECS` | Intervall für die Disk-Analyse in Sekunden | `300` (5 Min.) |

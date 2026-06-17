@@ -124,6 +124,7 @@ async fn get_config(State(state): State<Arc<AppState>>) -> Json<serde_json::Valu
     Json(serde_json::json!({
         "lancache_logs_dir": config.lancache_logs_dir,
         "lancache_cache_dir": config.lancache_cache_dir,
+        "prefill_dir": config.prefill_dir,
         "cache_scan_interval_secs": config.cache_scan_interval_secs,
         "log_retention_days": config.log_retention_days,
         "excluded_ips": config.excluded_ips,
@@ -188,9 +189,9 @@ async fn update_config(
 // ── Prefill ──────────────────────────────────────────────────────────
 
 async fn prefill_status(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let cache_dir = {
+    let prefill_dir = {
         let config = state.config.read().await;
-        config.lancache_cache_dir.clone()
+        config.prefill_dir.clone()
     };
     let db_parent = {
         let config = state.config.read().await;
@@ -199,7 +200,7 @@ async fn prefill_status(State(state): State<Arc<AppState>>) -> Json<serde_json::
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| "/data/gravitylancacheui".to_string())
     };
-    let manager = crate::prefill::PrefillManager::new(&cache_dir);
+    let manager = crate::prefill::PrefillManager::new(&prefill_dir);
     let statuses = manager.get_status(&db_parent).await;
     Json(serde_json::json!({ "platforms": statuses }))
 }
@@ -208,9 +209,9 @@ async fn prefill_run(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(platform): axum::extract::Path<String>,
 ) -> impl IntoResponse {
-    let cache_dir = {
+    let prefill_dir = {
         let config = state.config.read().await;
-        config.lancache_cache_dir.clone()
+        config.prefill_dir.clone()
     };
     let db_parent = {
         let config = state.config.read().await;
@@ -220,7 +221,7 @@ async fn prefill_run(
             .unwrap_or_else(|| "/data/gravitylancacheui".to_string())
     };
 
-    let manager = crate::prefill::PrefillManager::new(&cache_dir);
+    let manager = crate::prefill::PrefillManager::new(&prefill_dir);
 
     match manager.run_prefill_async(&platform, &db_parent).await {
         Ok(_) => Json(serde_json::json!({
@@ -322,9 +323,9 @@ async fn handle_prefill_interactive_socket(
 ) {
     use futures::{SinkExt, StreamExt};
     
-    let cache_dir = {
+    let prefill_dir = {
         let config = state.config.read().await;
-        config.lancache_cache_dir.clone()
+        config.prefill_dir.clone()
     };
     
     let (dir_name, binary) = match platform.as_str() {
@@ -337,8 +338,8 @@ async fn handle_prefill_interactive_socket(
         }
     };
 
-    let binary_path = format!("{}/{}/{}", cache_dir, dir_name, binary);
-    let working_dir = format!("{}/{}", cache_dir, dir_name);
+    let binary_path = format!("{}/{}/{}", prefill_dir, dir_name, binary);
+    let working_dir = format!("{}/{}", prefill_dir, dir_name);
 
     if !std::path::Path::new(&binary_path).exists() {
         let _ = socket.send(axum::extract::ws::Message::Text(format!("Error: Prefill binary not found at {}", binary_path).into())).await;

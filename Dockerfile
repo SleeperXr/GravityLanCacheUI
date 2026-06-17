@@ -24,6 +24,7 @@ RUN mkdir -p /data/gravitylancacheui
 
 ENV LANCACHE_LOGS_DIR=/data/logs \
     LANCACHE_CACHE_DIR=/data/cache \
+    PREFILL_DIR=/data/gravitylancacheui \
     DB_PATH=/data/gravitylancacheui/db.sqlite \
     CONFIG_FILE=/data/gravitylancacheui/config.json \
     LISTEN_PORT=8080 \
