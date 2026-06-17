@@ -189,6 +189,7 @@ impl PrefillManager {
     }
 
     /// Trigger a prefill run for a specific platform. (Used for testing/fallback)
+    #[allow(dead_code)]
     pub async fn run_prefill(
         &self,
         platform: &str,
