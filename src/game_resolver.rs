@@ -141,7 +141,7 @@ async fn download_and_import_mappings(state: Arc<AppState>) -> Result<usize, Box
     
     // Create reqwest client
     let client = reqwest::Client::builder()
-        .user_agent("GravityLancacheUI/0.1.0")
+        .user_agent("GravityLancacheUI/0.2.0")
         .build()?;
         
     let resp = client.get(url).send().await?;
