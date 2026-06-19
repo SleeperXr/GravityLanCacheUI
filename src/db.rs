@@ -268,6 +268,17 @@ impl Database {
         service: String,
         download_id: String,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        if service == "steam" {
+            match download_id.as_str() {
+                "228990" => return Ok(Some("Steamworks Common Redistributables".to_string())),
+                "228980" => return Ok(Some("Steamworks SDK".to_string())),
+                "250820" => return Ok(Some("SteamVR".to_string())),
+                "1007" => return Ok(Some("Steam Translation Trash".to_string())),
+                "241100" => return Ok(Some("Steam Controller Configs".to_string())),
+                _ => {}
+            }
+        }
+
         let name = self
             .conn
             .call(move |conn| {

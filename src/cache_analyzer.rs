@@ -7,14 +7,111 @@ use regex::Regex;
 use crate::db::CacheSnapshot;
 use crate::AppState;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 static STEAM_DEPOT_REGEX: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"depot/(\d+)/").expect("Invalid depot regex")
 });
+
+static IS_SCANNING: AtomicBool = AtomicBool::new(false);
 
 struct ScanResult {
     pub total_size_bytes: i64,
     pub total_files: i64,
     pub breakdown: HashMap<(String, Option<String>), (i64, i64)>, // (service, download_id) -> (bytes, count)
+}
+
+/// Execute a single cache analysis run and save it to the DB.
+pub async fn run_scan_once(state: &Arc<AppState>, cache_dir: &std::path::Path) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    tracing::info!("Cache analyzer: starting scan of {}...", cache_dir.display());
+    let result = scan_cache_directory(cache_dir).await?;
+    
+    // Resolve game names and build details JSON
+    let mut details_list = Vec::new();
+    
+    for ((service, download_id), (size_bytes, file_count)) in result.breakdown {
+        let game_name = if let Some(ref dl_id) = download_id {
+            state.db.get_game_name(service.clone(), dl_id.clone()).await.unwrap_or(None)
+        } else {
+            None
+        };
+        
+        let app_id = if service == "steam" {
+            if let Some(ref dl_id) = download_id {
+                state.db.get_steam_app_id(dl_id.clone()).await.unwrap_or(None)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        
+        details_list.push(serde_json::json!({
+            "service": service,
+            "download_id": download_id,
+            "game_name": game_name,
+            "app_id": app_id,
+            "size_bytes": size_bytes,
+            "file_count": file_count,
+        }));
+    }
+    
+    let details_json = serde_json::to_string(&serde_json::json!({
+        "items": details_list
+    })).ok();
+    
+    let snapshot = CacheSnapshot {
+        total_size_bytes: result.total_size_bytes,
+        total_files: result.total_files,
+        details_json,
+        taken_at: None,
+    };
+    
+    tracing::info!(
+        "Cache snapshot completed: {} files, {} bytes total, {} categorized items",
+        snapshot.total_files,
+        snapshot.total_size_bytes,
+        details_list.len()
+    );
+    state.db.insert_cache_snapshot(&snapshot).await?;
+
+    // Broadcast cache update
+    if let Ok(json) = serde_json::to_string(&serde_json::json!({
+        "type": "cache_update",
+        "total_size_bytes": snapshot.total_size_bytes,
+        "total_files": snapshot.total_files,
+    })) {
+        let _ = state.tx_broadcast.send(json);
+    }
+
+    Ok(())
+}
+
+/// Manually trigger a single cache scan if not already running.
+pub async fn trigger_single_scan(state: Arc<AppState>) -> Result<String, String> {
+    if IS_SCANNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return Err("A cache scan is already in progress.".to_string());
+    }
+
+    let cache_dir = {
+        let config = state.config.read().await;
+        std::path::PathBuf::from(&config.lancache_cache_dir)
+    };
+
+    if !cache_dir.exists() {
+        IS_SCANNING.store(false, Ordering::SeqCst);
+        return Err(format!("Cache directory does not exist: {}", cache_dir.display()));
+    }
+
+    // Run the scan in a background thread so we don't block the API handler
+    tokio::spawn(async move {
+        if let Err(e) = run_scan_once(&state, &cache_dir).await {
+            tracing::error!("Manual cache scan failed: {}", e);
+        }
+        IS_SCANNING.store(false, Ordering::SeqCst);
+    });
+
+    Ok("Cache scan started in background.".to_string())
 }
 
 pub async fn run_cache_analyzer(state: Arc<AppState>) {
@@ -36,72 +133,13 @@ pub async fn run_cache_analyzer(state: Arc<AppState>) {
         }
 
         if cache_dir.exists() {
-            tracing::info!("Cache analyzer: starting scan of {}...", cache_dir.display());
-            match scan_cache_directory(&cache_dir).await {
-                Ok(result) => {
-                    // Resolve game names and build details JSON
-                    let mut details_list = Vec::new();
-                    
-                    for ((service, download_id), (size_bytes, file_count)) in result.breakdown {
-                        let game_name = if let Some(ref dl_id) = download_id {
-                            state.db.get_game_name(service.clone(), dl_id.clone()).await.unwrap_or(None)
-                        } else {
-                            None
-                        };
-                        
-                        let app_id = if service == "steam" {
-                            if let Some(ref dl_id) = download_id {
-                                state.db.get_steam_app_id(dl_id.clone()).await.unwrap_or(None)
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        };
-                        
-                        details_list.push(serde_json::json!({
-                            "service": service,
-                            "download_id": download_id,
-                            "game_name": game_name,
-                            "app_id": app_id,
-                            "size_bytes": size_bytes,
-                            "file_count": file_count,
-                        }));
-                    }
-                    
-                    let details_json = serde_json::to_string(&serde_json::json!({
-                        "items": details_list
-                    })).ok();
-                    
-                    let snapshot = CacheSnapshot {
-                        total_size_bytes: result.total_size_bytes,
-                        total_files: result.total_files,
-                        details_json,
-                        taken_at: None,
-                    };
-                    
-                    tracing::info!(
-                        "Cache snapshot completed: {} files, {} bytes total, {} categorized items",
-                        snapshot.total_files,
-                        snapshot.total_size_bytes,
-                        details_list.len()
-                    );
-                    if let Err(e) = state.db.insert_cache_snapshot(&snapshot).await {
-                        tracing::error!("Failed to save cache snapshot: {}", e);
-                    }
-
-                    // Broadcast cache update
-                    if let Ok(json) = serde_json::to_string(&serde_json::json!({
-                        "type": "cache_update",
-                        "total_size_bytes": snapshot.total_size_bytes,
-                        "total_files": snapshot.total_files,
-                    })) {
-                        let _ = state.tx_broadcast.send(json);
-                    }
-                }
-                Err(e) => {
+            if IS_SCANNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                if let Err(e) = run_scan_once(&state, &cache_dir).await {
                     tracing::warn!("Cache scan failed: {}", e);
                 }
+                IS_SCANNING.store(false, Ordering::SeqCst);
+            } else {
+                tracing::info!("Scheduled cache scan skipped: scan already running");
             }
         } else {
             tracing::warn!("Cache directory not found: {}", cache_dir.display());

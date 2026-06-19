@@ -92,6 +92,9 @@ impl AppConfig {
         if let Some(db) = p.db_path {
             self.db_path = db;
         }
+        if let Some(dir) = p.prefill_dir {
+            self.prefill_dir = dir;
+        }
     }
 
     /// Save current user-editable settings to config.json.
@@ -103,6 +106,7 @@ impl AppConfig {
             log_scan_days: Some(self.log_scan_days),
             excluded_ips: Some(self.excluded_ips.clone()),
             db_path: Some(self.db_path.clone()),
+            prefill_dir: Some(self.prefill_dir.clone()),
         };
 
         if let Some(parent) = std::path::Path::new(&self.config_file_path).parent() {
@@ -124,4 +128,5 @@ struct PersistedConfig {
     log_scan_days: Option<u32>,
     excluded_ips: Option<Vec<String>>,
     db_path: Option<String>,
+    prefill_dir: Option<String>,
 }

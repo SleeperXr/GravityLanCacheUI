@@ -449,7 +449,10 @@ async function renderCache(container) {
       <div class="stat-card" style="--stat-accent:var(--color-hit)">
         <div class="stat-label">Last Scan</div>
         <div class="stat-value" id="cache-last-scan">—</div>
-        <div class="stat-sub">Automatic scanning active</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; width:100%; margin-top:8px;">
+          <span class="stat-sub" style="margin-top:0">Automatic scanning active</span>
+          <button class="btn btn-ghost" id="btn-scan-cache" style="font-size:0.75rem; padding: 4px 8px; margin-top:-4px;">🔄 Scan Now</button>
+        </div>
       </div>
     </div>
 
@@ -470,6 +473,24 @@ async function renderCache(container) {
   `;
 
   loadCacheData();
+
+  const scanBtn = document.getElementById('btn-scan-cache');
+  if (scanBtn) {
+    scanBtn.addEventListener('click', async () => {
+      scanBtn.disabled = true;
+      scanBtn.textContent = '⏳ Scanning...';
+      try {
+        const res = await API.post('/cache/scan');
+        alert(res.message || 'Cache scan started.');
+      } catch (e) {
+        alert('Failed to start cache scan: ' + (e.message || e.error || e));
+      } finally {
+        scanBtn.disabled = false;
+        scanBtn.textContent = '🔄 Scan Now';
+        loadCacheData();
+      }
+    });
+  }
 }
 
 async function loadCacheData() {
@@ -1212,10 +1233,15 @@ async function renderSettings(container) {
         <input class="input" value="${config.lancache_logs_dir || ''}" disabled style="opacity:0.6">
         <p style="color:var(--text-muted);font-size:0.75rem;margin-top:4px">Set via LANCACHE_LOGS_DIR env var</p>
       </div>
-      <div>
+      <div style="margin-bottom:16px">
         <label style="display:block;color:var(--text-secondary);font-size:0.85rem;margin-bottom:6px">LanCache Cache Directory</label>
         <input class="input" value="${config.lancache_cache_dir || ''}" disabled style="opacity:0.6">
         <p style="color:var(--text-muted);font-size:0.75rem;margin-top:4px">Set via LANCACHE_CACHE_DIR env var</p>
+      </div>
+      <div>
+        <label style="display:block;color:var(--text-secondary);font-size:0.85rem;margin-bottom:6px">Prefill Directory</label>
+        <input class="input" id="setting-prefill-dir" value="${config.prefill_dir || ''}">
+        <p style="color:var(--text-muted);font-size:0.75rem;margin-top:4px">Directory containing Prefill tools (SteamPrefill, etc.)</p>
       </div>
     </div>
 
@@ -1295,6 +1321,7 @@ async function saveSettings() {
     const gravity_key = document.getElementById('setting-gravity-key').value.trim();
     const cache_scan_interval_secs = parseInt(document.getElementById('setting-scan-interval').value, 10) || 0;
     const db_path = document.getElementById('setting-db-path').value.trim();
+    const prefill_dir = document.getElementById('setting-prefill-dir').value.trim();
     const log_retention_days = parseInt(document.getElementById('setting-retention').value, 10) || 90;
     const raw_log_scan_days = parseInt(document.getElementById('setting-log-scan-days').value, 10);
     const log_scan_days = isNaN(raw_log_scan_days) ? 7 : raw_log_scan_days;
@@ -1310,6 +1337,7 @@ async function saveSettings() {
       log_retention_days,
       log_scan_days,
       excluded_ips,
+      prefill_dir,
     });
 
     if (gravity_key) {

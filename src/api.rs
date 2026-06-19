@@ -26,6 +26,7 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/prefill/log/{platform}", get(prefill_log))
         .route("/prefill/interactive/{platform}", get(prefill_interactive_ws))
         .route("/cache/latest", get(latest_cache_snapshot))
+        .route("/cache/scan", axum::routing::post(trigger_cache_scan))
         .route("/tools/update_mappings", axum::routing::post(update_mappings))
         .route("/tools/reset_offset", axum::routing::post(reset_log_offset))
         .route("/ws", get(ws_handler))
@@ -143,6 +144,7 @@ struct UpdateConfigInput {
     log_scan_days: u32,
     db_path: String,
     excluded_ips: Vec<String>,
+    prefill_dir: String,
 }
 
 async fn update_config(
@@ -153,6 +155,14 @@ async fn update_config(
         return (
             axum::http::StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "Invalid db_path: Path traversal components (..) are not allowed"})),
+        )
+            .into_response();
+    }
+
+    if !is_safe_db_path(&body.prefill_dir) {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Invalid prefill_dir: Path traversal components (..) are not allowed"})),
         )
             .into_response();
     }
@@ -174,6 +184,7 @@ async fn update_config(
     config.log_scan_days = body.log_scan_days;
     config.db_path = body.db_path;
     config.excluded_ips = body.excluded_ips;
+    config.prefill_dir = body.prefill_dir;
 
     if let Err(e) = config.save_persisted() {
         return (
@@ -533,6 +544,21 @@ async fn latest_cache_snapshot(State(state): State<Arc<AppState>>) -> impl IntoR
         "snapshot": snapshot,
         "games": games
     })).into_response()
+}
+
+async fn trigger_cache_scan(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match crate::cache_analyzer::trigger_single_scan(state).await {
+        Ok(msg) => Json(serde_json::json!({
+            "status": "ok",
+            "message": msg
+        }))
+        .into_response(),
+        Err(e) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e })),
+        )
+            .into_response(),
+    }
 }
 
 async fn update_mappings(State(state): State<Arc<AppState>>) -> impl IntoResponse {
