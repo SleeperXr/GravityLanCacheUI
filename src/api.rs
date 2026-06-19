@@ -359,8 +359,8 @@ async fn handle_prefill_interactive_socket(
     }
 
     let mut cmd = if cfg!(target_os = "linux") {
-        let mut c = tokio::process::Command::new("script");
-        c.args(&["-q", "-c", &format!("{} select-apps", binary_path), "/dev/null"]);
+        let mut c = tokio::process::Command::new("socat");
+        c.args(&["-", &format!("EXEC:\"{} select-apps\",pty,stderr,setsid,sigint,sane", binary_path)]);
         c
     } else {
         let mut c = tokio::process::Command::new(&binary_path);

@@ -1,6 +1,6 @@
 [package]
 name = "gravitylancacheui"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "Modern LanCache monitoring dashboard with live stats, cache analysis, and prefill management"
 license = "MIT"
