@@ -949,7 +949,10 @@ async function loadPrefillStatus() {
             ${summaryHtml}
           </div>
           <div style="margin-top:auto; display:flex; flex-direction:column; gap:8px; padding-top: 12px;">
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;">
+              <button class="btn btn-ghost" onclick="openEditSelectedApps('${p.platform}')" style="font-size:0.75rem; padding: 8px 6px;" ${p.running ? 'disabled' : ''}>
+                ✏️ Edit Apps
+              </button>
               <button class="btn btn-ghost" onclick="openInteractiveConsole('${p.platform}')" style="font-size:0.75rem; padding: 8px 6px;" ${p.running ? 'disabled' : ''}>
                 🖥️ Setup Console
               </button>
@@ -1148,6 +1151,120 @@ function closeInteractiveConsole() {
   const modal = document.getElementById('prefill-interactive-modal');
   if (modal) modal.remove();
   loadPrefillStatus();
+}
+
+async function openEditSelectedApps(platform) {
+  const existing = document.getElementById('edit-selected-modal');
+  if (existing) existing.remove();
+
+  const platformNames = { steam: 'Steam', battlenet: 'Battle.net', epic: 'Epic Games' };
+  const platformName = platformNames[platform] || platform.toUpperCase();
+
+  const modal = document.createElement('div');
+  modal.id = 'edit-selected-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width: 600px;">
+      <div class="card-header" style="padding:16px 24px; border-bottom:1px solid var(--border-subtle)">
+        <div class="card-title">✏️ Edit Selected Apps: ${platformName}</div>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info" style="font-size:0.8rem; margin-bottom:16px; padding: 10px 14px; background:rgba(59, 130, 246, 0.08); border:1px solid rgba(59, 130, 246, 0.2); border-radius:6px; line-height:1.5;">
+          💡 Enter one <strong>App ID</strong> per line. For Steam, you can find App IDs on
+          <a href="https://store.steampowered.com/" target="_blank" style="color:var(--accent-primary-light)">store.steampowered.com</a>
+          (the number in the URL, e.g. <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:3px;font-size:0.75rem">730</code> for CS2).
+        </div>
+        <textarea id="edit-selected-textarea" class="input" rows="12" placeholder="Loading..." style="width:100%;font-family:var(--font-mono);font-size:0.85rem;resize:vertical;background:#0c1020;line-height:1.6" disabled></textarea>
+        <div id="edit-selected-status" style="margin-top:10px;font-size:0.8rem;min-height:20px;"></div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <span id="edit-selected-count" style="font-size:0.8rem; color:var(--text-muted); font-family:var(--font-mono)"></span>
+        <div style="display:flex; gap:8px">
+          <button class="btn btn-ghost" onclick="document.getElementById('edit-selected-modal').remove()">Cancel</button>
+          <button class="btn" id="edit-selected-save-btn" onclick="saveEditedSelectedApps('${platform}')" disabled>💾 Save</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  // Load current data
+  try {
+    const res = await API.get('/prefill/select/' + platform);
+    const textarea = document.getElementById('edit-selected-textarea');
+    const saveBtn = document.getElementById('edit-selected-save-btn');
+    const countEl = document.getElementById('edit-selected-count');
+    textarea.value = (res.app_ids || []).join('\n');
+    textarea.disabled = false;
+    saveBtn.disabled = false;
+    countEl.textContent = `${(res.app_ids || []).length} app(s) selected`;
+
+    textarea.addEventListener('input', () => {
+      const lines = textarea.value.split('\n').filter(l => l.trim() !== '');
+      countEl.textContent = `${lines.length} app(s) selected`;
+    });
+  } catch (e) {
+    const textarea = document.getElementById('edit-selected-textarea');
+    textarea.value = '';
+    textarea.disabled = false;
+    document.getElementById('edit-selected-save-btn').disabled = false;
+    document.getElementById('edit-selected-status').innerHTML =
+      `<span style="color:var(--color-warning)">⚠️ Could not load existing selection (file may not exist yet). You can add IDs and save.</span>`;
+  }
+}
+
+async function saveEditedSelectedApps(platform) {
+  const textarea = document.getElementById('edit-selected-textarea');
+  const statusEl = document.getElementById('edit-selected-status');
+  const saveBtn = document.getElementById('edit-selected-save-btn');
+  if (!textarea || !saveBtn) return;
+
+  saveBtn.disabled = true;
+  saveBtn.textContent = '⏳ Saving...';
+  statusEl.textContent = '';
+
+  const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l !== '');
+  const appIds = [];
+  for (const line of lines) {
+    const num = parseInt(line, 10);
+    if (isNaN(num) || num <= 0) {
+      statusEl.innerHTML = `<span style="color:var(--color-error)">❌ Invalid App ID: "${escapeHtml(line)}". Only positive integers are allowed.</span>`;
+      saveBtn.disabled = false;
+      saveBtn.textContent = '💾 Save';
+      return;
+    }
+    appIds.push(num);
+  }
+
+  try {
+    const res = await fetch('/api/v1/prefill/select/' + platform, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(localStorage.getItem('gravity_api_key') ? {'X-API-Key': localStorage.getItem('gravity_api_key')} : {}),
+      },
+      body: JSON.stringify({ app_ids: appIds }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Save failed');
+
+    statusEl.innerHTML = `<span style="color:var(--color-hit)">✅ Saved ${data.count} app(s) successfully!</span>`;
+    saveBtn.textContent = '💾 Save';
+    saveBtn.disabled = false;
+
+    // Refresh prefill status behind the modal
+    loadPrefillStatus();
+
+    // Auto-close after a short delay
+    setTimeout(() => {
+      const modal = document.getElementById('edit-selected-modal');
+      if (modal) modal.remove();
+    }, 1200);
+  } catch (e) {
+    statusEl.innerHTML = `<span style="color:var(--color-error)">❌ ${escapeHtml(e.message || e)}</span>`;
+    saveBtn.textContent = '💾 Save';
+    saveBtn.disabled = false;
+  }
 }
 
 // ── Page: Settings ───────────────────────────────────────────────────

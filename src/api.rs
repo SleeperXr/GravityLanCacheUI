@@ -25,6 +25,7 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/prefill/config", get(get_prefill_config).put(update_prefill_config))
         .route("/prefill/log/{platform}", get(prefill_log))
         .route("/prefill/interactive/{platform}", get(prefill_interactive_ws))
+        .route("/prefill/select/{platform}", get(get_selected_apps).post(save_selected_apps))
         .route("/cache/latest", get(latest_cache_snapshot))
         .route("/cache/scan", axum::routing::post(trigger_cache_scan))
         .route("/tools/update_mappings", axum::routing::post(update_mappings))
@@ -316,6 +317,74 @@ async fn prefill_log(
             "log": "No log file found. Run a prefill first.",
         }))
         .into_response()
+    }
+}
+
+async fn get_selected_apps(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(platform): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    let prefill_dir = {
+        let config = state.config.read().await;
+        config.prefill_dir.clone()
+    };
+    let manager = crate::prefill::PrefillManager::new(&prefill_dir);
+
+    match manager.get_selected_apps_raw(&platform) {
+        Ok(ids) => Json(serde_json::json!({
+            "platform": platform,
+            "app_ids": ids,
+        })).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e})),
+        ).into_response(),
+    }
+}
+
+async fn save_selected_apps(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(platform): axum::extract::Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let prefill_dir = {
+        let config = state.config.read().await;
+        config.prefill_dir.clone()
+    };
+    let manager = crate::prefill::PrefillManager::new(&prefill_dir);
+
+    let app_ids: Vec<u64> = match body.get("app_ids").and_then(|v| v.as_array()) {
+        Some(arr) => {
+            let mut ids = Vec::new();
+            for val in arr {
+                if let Some(id) = val.as_u64() {
+                    ids.push(id);
+                } else {
+                    return (
+                        axum::http::StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": "All app_ids must be unsigned integers"})),
+                    ).into_response();
+                }
+            }
+            ids
+        }
+        None => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Missing or invalid 'app_ids' array in request body"})),
+            ).into_response();
+        }
+    };
+
+    match manager.save_selected_apps(&platform, &app_ids) {
+        Ok(_) => Json(serde_json::json!({
+            "status": "saved",
+            "count": app_ids.len(),
+        })).into_response(),
+        Err(e) => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e})),
+        ).into_response(),
     }
 }
 

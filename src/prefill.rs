@@ -188,6 +188,43 @@ impl PrefillManager {
         }
     }
 
+    /// Read the raw selected app IDs from the selectedAppsToPrefill.json file.
+    pub fn get_selected_apps_raw(&self, platform: &str) -> Result<Vec<u64>, String> {
+        let dir_name = Self::platform_dir(platform).ok_or_else(|| format!("Unknown platform: {}", platform))?;
+        let path = format!("{}/{}/selectedAppsToPrefill.json", self.data_dir, dir_name);
+
+        if !std::path::Path::new(&path).exists() {
+            return Ok(Vec::new());
+        }
+
+        let data = std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
+        let ids: Vec<u64> = serde_json::from_str(&data).map_err(|e| format!("Invalid JSON: {}", e))?;
+        Ok(ids)
+    }
+
+    /// Save a list of app IDs to the selectedAppsToPrefill.json file.
+    pub fn save_selected_apps(&self, platform: &str, app_ids: &[u64]) -> Result<(), String> {
+        let dir_name = Self::platform_dir(platform).ok_or_else(|| format!("Unknown platform: {}", platform))?;
+        let dir_path = format!("{}/{}", self.data_dir, dir_name);
+
+        std::fs::create_dir_all(&dir_path).map_err(|e| format!("Failed to create directory: {}", e))?;
+
+        let path = format!("{}/selectedAppsToPrefill.json", dir_path);
+        let json = serde_json::to_string_pretty(app_ids).map_err(|e| format!("Failed to serialize: {}", e))?;
+        std::fs::write(&path, json).map_err(|e| format!("Failed to write file: {}", e))?;
+        Ok(())
+    }
+
+    /// Map platform key to directory name.
+    fn platform_dir(platform: &str) -> Option<&'static str> {
+        match platform {
+            "steam" => Some("SteamPrefill"),
+            "battlenet" => Some("BattleNetPrefill"),
+            "epic" => Some("EpicPrefill"),
+            _ => None,
+        }
+    }
+
     /// Trigger a prefill run for a specific platform. (Used for testing/fallback)
     #[allow(dead_code)]
     pub async fn run_prefill(
