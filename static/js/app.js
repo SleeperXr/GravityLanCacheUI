@@ -1194,6 +1194,7 @@ async function openEditSelectedApps(platform) {
     const textarea = document.getElementById('edit-selected-textarea');
     const saveBtn = document.getElementById('edit-selected-save-btn');
     const countEl = document.getElementById('edit-selected-count');
+    textarea.placeholder = "Enter one App ID per line (e.g. 730)...";
     textarea.value = (res.app_ids || []).join('\n');
     textarea.disabled = false;
     saveBtn.disabled = false;
@@ -1205,6 +1206,7 @@ async function openEditSelectedApps(platform) {
     });
   } catch (e) {
     const textarea = document.getElementById('edit-selected-textarea');
+    textarea.placeholder = "Enter one App ID per line (e.g. 730)...";
     textarea.value = '';
     textarea.disabled = false;
     document.getElementById('edit-selected-save-btn').disabled = false;
