@@ -8,6 +8,10 @@ pub static PREFILL_RUNNING_PLATFORMS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|
     Mutex::new(HashSet::new())
 });
 
+pub static PREFILL_ABORT_CHANNELS: Lazy<Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<()>>>> = Lazy::new(|| {
+    Mutex::new(std::collections::HashMap::new())
+});
+
 /// Manages LanCache prefill operations (SteamPrefill, BattleNetPrefill, EpicPrefill).
 /// Wraps the CLI tools from the ich777/lancache-prefill container.
 pub struct PrefillManager {
@@ -215,6 +219,17 @@ impl PrefillManager {
         Ok(())
     }
 
+    /// Stop an active prefill run for a specific platform.
+    pub fn stop_prefill(&self, platform: &str) -> Result<(), String> {
+        let mut map = PREFILL_ABORT_CHANNELS.lock().map_err(|e| e.to_string())?;
+        if let Some(tx) = map.remove(platform) {
+            let _ = tx.send(());
+            Ok(())
+        } else {
+            Err("No active prefill run found for this platform".to_string())
+        }
+    }
+
     /// Map platform key to directory name.
     fn platform_dir(platform: &str) -> Option<&'static str> {
         match platform {
@@ -334,21 +349,38 @@ impl PrefillManager {
                 }
             };
 
-            let status = child.wait().await;
-            
-            if let Ok(mut running) = PREFILL_RUNNING_PLATFORMS.lock() {
-                running.remove(&platform_string);
+            let (abort_tx, mut abort_rx) = tokio::sync::oneshot::channel::<()>();
+            if let Ok(mut map) = PREFILL_ABORT_CHANNELS.lock() {
+                map.insert(platform_string.clone(), abort_tx);
             }
 
-            match status {
-                Ok(s) if s.success() => {
-                    tracing::info!("Background prefill for {} completed successfully", platform_string);
+            tokio::select! {
+                status = child.wait() => {
+                    if let Ok(mut map) = PREFILL_ABORT_CHANNELS.lock() {
+                        map.remove(&platform_string);
+                    }
+                    if let Ok(mut running) = PREFILL_RUNNING_PLATFORMS.lock() {
+                        running.remove(&platform_string);
+                    }
+                    match status {
+                        Ok(s) if s.success() => {
+                            tracing::info!("Background prefill for {} completed successfully", platform_string);
+                        }
+                        Ok(s) => {
+                            tracing::error!("Background prefill for {} failed with exit status: {}", platform_string, s);
+                        }
+                        Err(e) => {
+                            tracing::error!("Background prefill for {} wait failed: {}", platform_string, e);
+                        }
+                    }
                 }
-                Ok(s) => {
-                    tracing::error!("Background prefill for {} failed with exit status: {}", platform_string, s);
-                }
-                Err(e) => {
-                    tracing::error!("Background prefill for {} wait failed: {}", platform_string, e);
+                _ = &mut abort_rx => {
+                    tracing::info!("Abort requested for prefill {}", platform_string);
+                    let _ = child.kill().await;
+                    let _ = child.wait().await;
+                    if let Ok(mut running) = PREFILL_RUNNING_PLATFORMS.lock() {
+                        running.remove(&platform_string);
+                    }
                 }
             }
         });

@@ -960,9 +960,15 @@ async function loadPrefillStatus() {
                 📄 View Logs
               </button>
             </div>
-            <button class="btn" onclick="runPrefill('${p.platform}')" id="prefill-btn-${p.platform}" style="width:100%" ${p.running ? 'disabled' : ''}>
-              ${p.running ? '⏳ Prefilling...' : '⚡ Run Prefill'}
-            </button>
+            ${p.running ? `
+              <button class="btn" onclick="stopPrefill('${p.platform}')" id="prefill-btn-${p.platform}" style="width:100%; background: #c53030; border-color: #c53030; color: white;">
+                🛑 Stop Prefill
+              </button>
+            ` : `
+              <button class="btn" onclick="runPrefill('${p.platform}')" id="prefill-btn-${p.platform}" style="width:100%">
+                ⚡ Run Prefill
+              </button>
+            `}
             <div id="prefill-error-${p.platform}" style="color:var(--color-error); font-size:0.75rem; margin-top:8px; display:none; text-align:left; word-break:break-word;"></div>
           </div>
         </div>
@@ -997,6 +1003,22 @@ async function runPrefill(platform) {
       errorDiv.textContent = `Error: ${e.message || e.error || e}`;
       errorDiv.style.display = 'block';
     }
+  }
+}
+
+async function stopPrefill(platform) {
+  const btn = document.getElementById('prefill-btn-' + platform);
+  if (btn) {
+    btn.textContent = '⏳ Stopping...';
+    btn.disabled = true;
+  }
+
+  try {
+    await API.post('/prefill/stop/' + platform);
+    loadPrefillStatus();
+  } catch (e) {
+    alert('Failed to stop prefill: ' + (e.message || e));
+    loadPrefillStatus();
   }
 }
 

@@ -22,6 +22,7 @@ pub fn routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/logs", get(get_logs))
         .route("/prefill/status", get(prefill_status))
         .route("/prefill/run/{platform}", axum::routing::post(prefill_run))
+        .route("/prefill/stop/{platform}", axum::routing::post(prefill_stop))
         .route("/prefill/config", get(get_prefill_config).put(update_prefill_config))
         .route("/prefill/log/{platform}", get(prefill_log))
         .route("/prefill/interactive/{platform}", get(prefill_interactive_ws))
@@ -244,6 +245,30 @@ async fn prefill_run(
         Err(e) => (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn prefill_stop(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(platform): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    let prefill_dir = {
+        let config = state.config.read().await;
+        config.prefill_dir.clone()
+    };
+    let manager = crate::prefill::PrefillManager::new(&prefill_dir);
+
+    match manager.stop_prefill(&platform) {
+        Ok(_) => Json(serde_json::json!({
+            "status": "stopped",
+            "message": format!("Prefill for {} stopped successfully", platform),
+        }))
+        .into_response(),
+        Err(e) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e})),
         )
             .into_response(),
     }
