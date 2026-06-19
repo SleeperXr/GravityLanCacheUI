@@ -12,7 +12,7 @@ RUN cargo build --release
 # ── Stage 2: Runtime ──────────────────────────────────────────────────
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata gcompat libstdc++ util-linux socat
+RUN apk add --no-cache ca-certificates tzdata gcompat libstdc++ util-linux socat bash
 
 WORKDIR /app
 
