@@ -358,13 +358,22 @@ async fn handle_prefill_interactive_socket(
         return;
     }
 
-    let mut child = match tokio::process::Command::new(&binary_path)
-        .arg("select-apps")
+    let mut cmd = if cfg!(target_os = "linux") {
+        let mut c = tokio::process::Command::new("script");
+        c.args(&["-q", "-c", &format!("{} select-apps", binary_path), "/dev/null"]);
+        c
+    } else {
+        let mut c = tokio::process::Command::new(&binary_path);
+        c.arg("select-apps");
+        c
+    };
+
+    let mut child = match cmd
         .current_dir(&working_dir)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .env("TERM", "dumb") 
+        .env("TERM", "xterm") 
         .spawn() 
     {
         Ok(c) => c,
