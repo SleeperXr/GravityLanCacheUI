@@ -69,7 +69,7 @@ Klicke im Docker Compose Plugin auf **Up**, um den Container herunterzuladen und
 
 Die Prefill-Binärdateien (SteamPrefill, BattleNetPrefill, EpicPrefill) sind **nicht im Container vorinstalliert**. Dies liegt daran, dass sie unabhängig geupdated werden müssen und Schreibrechte in ihrem eigenen Verzeichnis benötigen, um Login-Tokens (z. B. verschlüsselte Steam Guard Credentials) und Konfigurationsdateien permanent auf deinem Server zu speichern.
 
-*(Ein großes Dankeschön geht an den Entwickler **[astromander](https://github.com/astromander)** für die Bereitstellung dieser fantastischen Prefill-Tools!)*
+*(Ein großes Dankeschön geht an den Entwickler **[tpill90](https://github.com/tpill90)** für die Bereitstellung dieser fantastischen Prefill-Tools!)*
 
 Um die Prefill-Integration zu nutzen, befolge diese Schritte:
 
@@ -79,9 +79,9 @@ Um die Prefill-Integration zu nutzen, befolge diese Schritte:
    - `BattleNetPrefill`
    - `EpicPrefill`
 3. Lade die **Linux-x64**-Releases der Tools von GitHub herunter:
-   - 🎮 [SteamPrefill (Releases von astromander)](https://github.com/astromander/SteamPrefill/releases)
-   - 🌀 [BattleNetPrefill (Releases von astromander)](https://github.com/astromander/BattleNetPrefill/releases)
-   - 🌌 [EpicPrefill (Releases von astromander)](https://github.com/astromander/EpicPrefill/releases)
+   - 🎮 [SteamPrefill Releases](https://github.com/tpill90/steam-lancache-prefill/releases)
+   - 🌀 [BattleNetPrefill Releases](https://github.com/tpill90/battlenet-lancache-prefill/releases)
+   - 🌌 [EpicPrefill Releases](https://github.com/tpill90/epic-lancache-prefill/releases)
 4. Entpacke die jeweilige ausführbare Datei in den entsprechenden Ordner. Deine Ordnerstruktur sollte so aussehen:
    ```text
    /mnt/user/appdata/gravitylancacheui/
