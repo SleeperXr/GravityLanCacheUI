@@ -8,10 +8,10 @@ GravityLancacheUI ist ein hochmodernes, schnelles und visuell ansprechendes Übe
 
 - 📊 **Echtzeit-Statistiken:** Live-Netzwerkdurchsatz, aktive Downloads und Cache-Trefferrate (Hit/Miss-Rate).
 - 💾 **Historische Daten:** Lokale SQLite-Datenbank (standardmäßig mit Write-Ahead Logging für hohe Performance) oder optionale PostgreSQL-Datenbank.
-- 🔍 **Disk- & Cache-Analyse:** Detaillierte Berichte darüber, welche Spiele/Plattformen wie viel Platz im Cache belegen (vollständig anpassbares Scan-Intervall).
-- 🎮 **Game Resolver:** Automatische Auflösung von Steam Depot-IDs in echte Spielnamen (lokales Mapping + optionale Steam Web API-Integration).
+- 🔍 **Disk- & Cache-Analyse:** Detaillierte Berichte darüber, welche Spiele/Plattformen wie viel Platz im Cache belegen (vollständig anpassbares Scan-Intervall + manueller Sofort-Scan per Button).
+- 🎮 **Game Resolver:** Automatische Auflösung von Steam Depot-IDs in echte Spielnamen (lokales Mapping + optionale Steam Web API-Integration + Schutz für geteilte Hilfsdepots wie Steamworks).
 - 🚀 **Prefill-Management:** Integrierter CLI-Wrapper zum Vorwärmen des Caches über SteamPrefill, BattleNetPrefill oder EpicPrefill.
-- ⚙️ **Settings & Setup Wizard:** Ein Einrichtungsassistent prüft beim ersten Start alle Pfade und Berechtigungen. Einstellungen (API-Keys, Ausschluss-IPs etc.) können im laufenden Betrieb über das Web-UI geändert werden.
+- ⚙️ **Settings & Setup Wizard:** Ein Einrichtungsassistent prüft beim ersten Start alle Pfade und Berechtigungen. Einstellungen (API-Keys, Ausschluss-IPs, Prefill-Verzeichnis etc.) können im laufenden Betrieb über das Web-UI geändert werden.
 
 ---
 
@@ -54,7 +54,7 @@ services:
 
 ### 2. Pfade anpassen
 
-Stelle sicher, dass die Host-Pfade auf der rechten Seite der Volumes (`/mnt/...`) mit deiner Unraid-Konfiguration übereinstimmen:
+Stelle sicher, dass die Host-Pfade auf der linken Seite der Volumes (`/mnt/...`) mit deiner Unraid-Konfiguration übereinstimmen:
 
 - `/mnt/user/appdata/lancache/logs` sollte auf den Ordner zeigen, in dem LanCache seine `access.log` ablegt.
 - `/mnt/user/lancache` sollte das Hauptverzeichnis deines LanCaches sein (wo die Unterordner `cache` oder `installs` liegen).
@@ -62,6 +62,45 @@ Stelle sicher, dass die Host-Pfade auf der rechten Seite der Volumes (`/mnt/...`
 ### 3. Container starten
 
 Klicke im Docker Compose Plugin auf **Up**, um den Container herunterzuladen und zu starten. Das Webinterface ist anschließend unter `http://<unraid-ip>:5005` erreichbar.
+
+---
+
+## 🚀 Prefill-Tools einrichten
+
+Die Prefill-Binärdateien (SteamPrefill, BattleNetPrefill, EpicPrefill) sind **nicht im Container vorinstalliert**. Dies liegt daran, dass sie unabhängig geupdated werden müssen und Schreibrechte in ihrem eigenen Verzeichnis benötigen, um Login-Tokens (z. B. verschlüsselte Steam Guard Credentials) und Konfigurationsdateien permanent auf deinem Server zu speichern.
+
+*(Ein großes Dankeschön geht an den Entwickler **[astromander](https://github.com/astromander)** für die Bereitstellung dieser fantastischen Prefill-Tools!)*
+
+Um die Prefill-Integration zu nutzen, befolge diese Schritte:
+
+1. Navigiere auf deinem Host-Server in das gemountete Appdata-Verzeichnis deiner UI (z. B. `/mnt/user/appdata/gravitylancacheui/`).
+2. Erstelle darin Unterordner für die jeweiligen Plattformen:
+   - `SteamPrefill`
+   - `BattleNetPrefill`
+   - `EpicPrefill`
+3. Lade die **Linux-x64**-Releases der Tools von GitHub herunter:
+   - 🎮 [SteamPrefill (Releases von astromander)](https://github.com/astromander/SteamPrefill/releases)
+   - 🌀 [BattleNetPrefill (Releases von astromander)](https://github.com/astromander/BattleNetPrefill/releases)
+   - 🌌 [EpicPrefill (Releases von astromander)](https://github.com/astromander/EpicPrefill/releases)
+4. Entpacke die jeweilige ausführbare Datei in den entsprechenden Ordner. Deine Ordnerstruktur sollte so aussehen:
+   ```text
+   /mnt/user/appdata/gravitylancacheui/
+   ├── config.json
+   ├── db.sqlite
+   ├── SteamPrefill/
+   │   └── SteamPrefill (ausführbare Datei)
+   ├── BattleNetPrefill/
+   │   └── BattleNetPrefill (ausführbare Datei)
+   └── EpicPrefill/
+       └── EpicPrefill (ausführbare Datei)
+   ```
+5. Setze die Ausführungsrechte für die heruntergeladenen Binärdateien auf deinem Server:
+   ```bash
+   chmod +x /mnt/user/appdata/gravitylancacheui/SteamPrefill/SteamPrefill
+   chmod +x /mnt/user/appdata/gravitylancacheui/BattleNetPrefill/BattleNetPrefill
+   chmod +x /mnt/user/appdata/gravitylancacheui/EpicPrefill/EpicPrefill
+   ```
+6. Stelle im Web-UI unter **Settings** den Pfad für das **Prefill-Verzeichnis** auf `/data/gravitylancacheui` (dies entspricht deinem Appdata-Pfad im Container). Nun kannst du über die Interactive Setup Console direkt Logins durchführen und Spiele auswählen!
 
 ---
 
@@ -83,7 +122,7 @@ Folgende Variablen können über die Compose-Datei konfiguriert werden:
 | `STEAM_API_KEY` | Steam Web API Key für die Namensauflösung | *(Optional)* |
 | `EXCLUDED_IPS` | Kommagetrennte IPs, die im Tracking ignoriert werden | *(Optional)* |
 
-*Hinweis: Viele dieser Einstellungen (wie der Steam API-Key, Ausschluss-IPs und das Scan-Intervall) können nach dem ersten Start auch direkt im **Settings**-Bereich des Web-UIs geändert und gespeichert werden.*
+*Hinweis: Viele dieser Einstellungen (wie der Steam API-Key, Ausschluss-IPs, das Scan-Intervall und das Prefill-Verzeichnis) können nach dem ersten Start auch direkt im **Settings**-Bereich des Web-UIs geändert und gespeichert werden.*
 
 ---
 
