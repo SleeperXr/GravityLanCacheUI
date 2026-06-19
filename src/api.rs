@@ -353,17 +353,42 @@ async fn save_selected_apps(
     };
     let manager = crate::prefill::PrefillManager::new(&prefill_dir);
 
-    let app_ids: Vec<u64> = match body.get("app_ids").and_then(|v| v.as_array()) {
+    let app_ids: Vec<serde_json::Value> = match body.get("app_ids").and_then(|v| v.as_array()) {
         Some(arr) => {
             let mut ids = Vec::new();
             for val in arr {
-                if let Some(id) = val.as_u64() {
-                    ids.push(id);
+                if platform == "steam" {
+                    if let Some(id) = val.as_u64() {
+                        ids.push(serde_json::Value::Number(id.into()));
+                    } else if let Some(s) = val.as_str() {
+                        if let Ok(id) = s.parse::<u64>() {
+                            ids.push(serde_json::Value::Number(id.into()));
+                        } else {
+                            return (
+                                axum::http::StatusCode::BAD_REQUEST,
+                                Json(serde_json::json!({"error": format!("Steam App ID must be a positive integer: {}", s)})),
+                            ).into_response();
+                        }
+                    } else {
+                        return (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            Json(serde_json::json!({"error": "Steam App IDs must be integers or numeric strings"})),
+                        ).into_response();
+                    }
                 } else {
-                    return (
-                        axum::http::StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({"error": "All app_ids must be unsigned integers"})),
-                    ).into_response();
+                    if let Some(s) = val.as_str() {
+                        let trimmed = s.trim().to_string();
+                        if !trimmed.is_empty() {
+                            ids.push(serde_json::Value::String(trimmed));
+                        }
+                    } else if let Some(id) = val.as_u64() {
+                        ids.push(serde_json::Value::Number(id.into()));
+                    } else {
+                        return (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            Json(serde_json::json!({"error": "App IDs must be strings or integers"})),
+                        ).into_response();
+                    }
                 }
             }
             ids

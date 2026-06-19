@@ -1228,14 +1228,25 @@ async function saveEditedSelectedApps(platform) {
   const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l !== '');
   const appIds = [];
   for (const line of lines) {
-    const num = parseInt(line, 10);
-    if (isNaN(num) || num <= 0) {
-      statusEl.innerHTML = `<span style="color:var(--color-error)">❌ Invalid App ID: "${escapeHtml(line)}". Only positive integers are allowed.</span>`;
-      saveBtn.disabled = false;
-      saveBtn.textContent = '💾 Save';
-      return;
+    if (platform === 'steam') {
+      const num = parseInt(line, 10);
+      if (isNaN(num) || num <= 0) {
+        statusEl.innerHTML = `<span style="color:var(--color-error)">❌ Invalid App ID: "${escapeHtml(line)}". Only positive integers are allowed.</span>`;
+        saveBtn.disabled = false;
+        saveBtn.textContent = '💾 Save';
+        return;
+      }
+      appIds.push(num);
+    } else {
+      // For Battle.net and Epic, allow alphanumeric, dashes, underscores, and dots
+      if (!/^[a-zA-Z0-9\-_.]+$/.test(line)) {
+        statusEl.innerHTML = `<span style="color:var(--color-error)">❌ Invalid Product ID: "${escapeHtml(line)}". Only alphanumeric characters, dashes, underscores, and dots are allowed.</span>`;
+        saveBtn.disabled = false;
+        saveBtn.textContent = '💾 Save';
+        return;
+      }
+      appIds.push(line);
     }
-    appIds.push(num);
   }
 
   try {

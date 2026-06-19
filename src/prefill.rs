@@ -189,7 +189,7 @@ impl PrefillManager {
     }
 
     /// Read the raw selected app IDs from the selectedAppsToPrefill.json file.
-    pub fn get_selected_apps_raw(&self, platform: &str) -> Result<Vec<u64>, String> {
+    pub fn get_selected_apps_raw(&self, platform: &str) -> Result<Vec<serde_json::Value>, String> {
         let dir_name = Self::platform_dir(platform).ok_or_else(|| format!("Unknown platform: {}", platform))?;
         let path = format!("{}/{}/selectedAppsToPrefill.json", self.data_dir, dir_name);
 
@@ -198,12 +198,12 @@ impl PrefillManager {
         }
 
         let data = std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
-        let ids: Vec<u64> = serde_json::from_str(&data).map_err(|e| format!("Invalid JSON: {}", e))?;
+        let ids: Vec<serde_json::Value> = serde_json::from_str(&data).map_err(|e| format!("Invalid JSON: {}", e))?;
         Ok(ids)
     }
 
     /// Save a list of app IDs to the selectedAppsToPrefill.json file.
-    pub fn save_selected_apps(&self, platform: &str, app_ids: &[u64]) -> Result<(), String> {
+    pub fn save_selected_apps(&self, platform: &str, app_ids: &[serde_json::Value]) -> Result<(), String> {
         let dir_name = Self::platform_dir(platform).ok_or_else(|| format!("Unknown platform: {}", platform))?;
         let dir_path = format!("{}/{}", self.data_dir, dir_name);
 
