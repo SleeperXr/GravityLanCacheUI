@@ -68,7 +68,13 @@ impl PrefillManager {
     }
 
     async fn platform_status(&self, platform: &str, binary_name: &str, db_parent: &str) -> PrefillStatus {
-        let config_path = format!("{}/{}/selectedAppsToPrefill.json", self.data_dir, binary_name);
+        let mut config_path = format!("{}/{}/Config/selectedAppsToPrefill.json", self.data_dir, binary_name);
+        if !std::path::Path::new(&config_path).exists() {
+            let fallback_path = format!("{}/{}/selectedAppsToPrefill.json", self.data_dir, binary_name);
+            if std::path::Path::new(&fallback_path).exists() {
+                config_path = fallback_path;
+            }
+        }
         
         let selected_apps = if std::path::Path::new(&config_path).exists() {
             if let Ok(data) = std::fs::read_to_string(&config_path) {
@@ -195,10 +201,15 @@ impl PrefillManager {
     /// Read the raw selected app IDs from the selectedAppsToPrefill.json file.
     pub fn get_selected_apps_raw(&self, platform: &str) -> Result<Vec<serde_json::Value>, String> {
         let dir_name = Self::platform_dir(platform).ok_or_else(|| format!("Unknown platform: {}", platform))?;
-        let path = format!("{}/{}/selectedAppsToPrefill.json", self.data_dir, dir_name);
+        let mut path = format!("{}/{}/Config/selectedAppsToPrefill.json", self.data_dir, dir_name);
 
         if !std::path::Path::new(&path).exists() {
-            return Ok(Vec::new());
+            let fallback_path = format!("{}/{}/selectedAppsToPrefill.json", self.data_dir, dir_name);
+            if std::path::Path::new(&fallback_path).exists() {
+                path = fallback_path;
+            } else {
+                return Ok(Vec::new());
+            }
         }
 
         let data = std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
@@ -209,7 +220,7 @@ impl PrefillManager {
     /// Save a list of app IDs to the selectedAppsToPrefill.json file.
     pub fn save_selected_apps(&self, platform: &str, app_ids: &[serde_json::Value]) -> Result<(), String> {
         let dir_name = Self::platform_dir(platform).ok_or_else(|| format!("Unknown platform: {}", platform))?;
-        let dir_path = format!("{}/{}", self.data_dir, dir_name);
+        let dir_path = format!("{}/{}/Config", self.data_dir, dir_name);
 
         std::fs::create_dir_all(&dir_path).map_err(|e| format!("Failed to create directory: {}", e))?;
 
@@ -498,7 +509,7 @@ mod tests {
         let db_path = db_dir.to_str().unwrap();
         
         // Write a mockup prefill config for steam
-        let steam_dir = cache_dir.join("SteamPrefill");
+        let steam_dir = cache_dir.join("SteamPrefill").join("Config");
         fs::create_dir_all(&steam_dir).unwrap();
         fs::write(
             steam_dir.join("selectedAppsToPrefill.json"),
